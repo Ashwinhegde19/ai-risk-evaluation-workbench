@@ -24,18 +24,29 @@ class HuggingFaceOSSClient:
         from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id)
-        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+        device = self._best_device(torch)
+        dtype = torch.float16 if device.type in {"cuda", "mps"} else torch.float32
         model = AutoModelForCausalLM.from_pretrained(
             self.model_id,
-            torch_dtype=dtype,
-            device_map="auto",
+            dtype=dtype,
+            low_cpu_mem_usage=True,
         )
+        model.to(device)
         self._pipeline = pipeline(
             "text-generation",
             model=model,
             tokenizer=self._tokenizer,
+            device=device,
         )
         return self._pipeline
+
+    @staticmethod
+    def _best_device(torch):
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
 
     def _format_messages(self, messages: list[ChatMessage]) -> str:
         if self._tokenizer is None:
