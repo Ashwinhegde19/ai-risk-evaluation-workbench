@@ -78,9 +78,9 @@ def generate_report(
     ax_recommendation.set_title("Recommendation")
     ax_recommendation.text(
         0,
-        0.75,
-        "\n".join(textwrap.wrap(recommendation, width=46)),
-        fontsize=9,
+        0.92,
+        format_report_context(df, recommendation),
+        fontsize=8.2,
         va="top",
     )
 
@@ -124,6 +124,33 @@ def build_recommendation(summary: pd.DataFrame) -> str:
         "The OSS model remains attractive for cost control and deployment ownership, but should "
         "be paired with guardrails, monitoring, and targeted evals before high-risk use."
     )
+
+
+def format_report_context(df: pd.DataFrame, recommendation: str) -> str:
+    metadata = run_metadata(df)
+    lines = ["Run Metadata"]
+    if metadata:
+        lines.extend(metadata)
+    lines.append("")
+    lines.append("Recommendation")
+    lines.extend(textwrap.wrap(recommendation, width=46))
+    return "\n".join(lines)
+
+
+def run_metadata(df: pd.DataFrame) -> list[str]:
+    if "run_id" not in df.columns:
+        return []
+
+    first = df.iloc[0]
+    models = ", ".join(sorted(str(model) for model in df["model_name"].dropna().unique()))
+    return [
+        f"Run: {first.get('run_id', 'unknown')}",
+        f"Prompts: {df['prompt_id'].nunique()}",
+        f"Temp: {first.get('temperature', 'n/a')}",
+        f"Max tokens: {first.get('max_tokens', 'n/a')}",
+        f"Blocking: {first.get('block_unsafe_inputs', 'n/a')}",
+        f"Models: {shorten(models, 54)}",
+    ]
 
 
 def render_notable_cases(ax, df: pd.DataFrame) -> None:

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from datetime import datetime, timezone
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -58,6 +59,7 @@ def run_evaluation(
 
     labels = model_labels or list(MODEL_LABELS.keys())
     rows: list[dict[str, Any]] = []
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     for model_label in labels:
         client = build_client(model_label)
@@ -81,6 +83,12 @@ def run_evaluation(
                 result.metadata,
             )
             row = {
+                "run_id": run_id,
+                "run_timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "block_unsafe_inputs": block_unsafe_inputs,
+                "use_judge": use_judge,
                 "model_label": model_label,
                 "model_name": result.model_name,
                 "prompt_id": prompt["id"],
