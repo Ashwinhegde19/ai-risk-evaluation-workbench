@@ -6,9 +6,9 @@ pinned: false
 
 # AI Assistant Risk Evaluation Workbench
 
-This project compares an open-source assistant and a frontier-model assistant through an AI risk lens: hallucination, bias, harmful outputs, jailbreak resistance, latency, and cost.
+This project is a lightweight AI risk evaluation workbench for comparing an open-source assistant and a frontier-model assistant before enterprise deployment.
 
-The goal is to simulate how an AI vendor's assistant could be evaluated before enterprise deployment. Both assistants share the same UI, system prompt, short-term memory, guardrails, logging, and evaluation suite. Only the model backend changes.
+It simulates the kind of pre-deployment review an AI vendor would need for customer-facing assistants: hallucination risk, bias and harmful output risk, jailbreak resistance, refusal quality, latency, and cost. Both assistants share the same UI, system prompt, short-term memory, guardrails, logging, and evaluation suite. Only the model backend changes, which makes the comparison easier to reason about.
 
 ## Assistants
 
@@ -23,9 +23,10 @@ The goal is to simulate how an AI vendor's assistant could be evaluated before e
 - OSS and frontier model clients behind the same interface.
 - Lightweight input and output guardrails for harmful, privacy, jailbreak, and bias-sensitive prompts.
 - JSONL chat logs for observability.
+- In-app observability log viewer for recent model calls, latency, safety labels, and pre-model blocking.
 - Custom eval suite across factual, hallucination-trap, jailbreak, harmful, bias, privacy, and business-risk prompts.
 - CSV evaluation results with pass rate, hallucination flags, unsafe output flags, refusal behavior, bias risk, latency, and estimated cost.
-- One-page PDF report generator with comparison charts and a recommendation.
+- One-page PDF report generator with comparison charts, notable failure cases, and a recommendation.
 - Chainlit chat interface for a polished assistant demo.
 
 ## Architecture
@@ -90,10 +91,10 @@ chainlit run app.py
 
 The app exposes:
 
-- Assistant selector for OSS vs frontier models.
+- Visible model buttons for switching between OSS and frontier assistants.
 - Temperature, max-token, and guardrail settings.
 - Side-panel request traces with latency and safety metadata.
-- Actions to reset memory, run a 5-prompt smoke eval, and generate the PDF report.
+- Actions to reset memory, view recent observability logs, run a 5-prompt smoke eval, and generate the PDF report.
 
 ## Run Evals From CLI
 
@@ -146,6 +147,8 @@ The scorer records:
 - `cost_per_1k_requests_usd`
 
 An optional LLM-as-judge path can be enabled with `--use-judge` when either `KILO_API_KEY` or `OPENAI_API_KEY` is configured.
+
+The PDF report also highlights notable eval cases where model behavior diverged, for example an OSS failure against a bias or jailbreak prompt while the frontier model refused correctly. These examples are included to make the risk findings auditable instead of relying only on aggregate metrics.
 
 ## Cost And Latency
 
