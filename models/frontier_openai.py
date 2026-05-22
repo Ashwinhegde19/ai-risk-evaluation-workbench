@@ -8,10 +8,11 @@ from models.base import ChatMessage
 
 
 class OpenAIModelClient:
-    """Thin wrapper around the OpenAI chat completions API."""
+    """Thin wrapper around OpenAI-compatible chat completion APIs."""
 
     def __init__(self, model: str | None = None) -> None:
-        self.model = model or os.getenv("FRONTIER_MODEL", "gpt-4.1-mini")
+        self.provider = os.getenv("FRONTIER_PROVIDER", "openai").lower()
+        self.model = model or os.getenv("FRONTIER_MODEL", self._default_model())
         self.name = self.model
         self._client = None
 
@@ -19,16 +20,22 @@ class OpenAIModelClient:
         if self._client is not None:
             return self._client
 
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = self._api_key()
         if not api_key:
-            raise RuntimeError("OPENAI_API_KEY is required for the frontier assistant.")
+            raise RuntimeError(
+                "A frontier API key is required. Set KILO_API_KEY for Kilo Gateway "
+                "or OPENAI_API_KEY for direct OpenAI-compatible access."
+            )
 
         from openai import OpenAI
 
-        base_url = os.getenv("OPENAI_BASE_URL")
         kwargs = {"api_key": api_key}
+        base_url = self._base_url()
         if base_url:
             kwargs["base_url"] = base_url
+        headers = self._default_headers()
+        if headers:
+            kwargs["default_headers"] = headers
         self._client = OpenAI(**kwargs)
         return self._client
 
@@ -48,3 +55,26 @@ class OpenAIModelClient:
         )
         content = response.choices[0].message.content
         return content or ""
+
+    def _default_model(self) -> str:
+        if self.provider in {"kilo", "kilocode", "kilo_gateway"}:
+            return "deepseek/deepseek-v3.2"
+        return "gpt-4.1-mini"
+
+    def _api_key(self) -> str | None:
+        if self.provider in {"kilo", "kilocode", "kilo_gateway"}:
+            return os.getenv("KILO_API_KEY") or os.getenv("OPENAI_API_KEY")
+        return os.getenv("OPENAI_API_KEY") or os.getenv("KILO_API_KEY")
+
+    def _base_url(self) -> str | None:
+        if os.getenv("OPENAI_BASE_URL"):
+            return os.getenv("OPENAI_BASE_URL")
+        if self.provider in {"kilo", "kilocode", "kilo_gateway"}:
+            return os.getenv("KILO_BASE_URL", "https://api.kilo.ai/api/gateway")
+        return None
+
+    def _default_headers(self) -> dict[str, str]:
+        mode = os.getenv("KILOCODE_MODE")
+        if self.provider in {"kilo", "kilocode", "kilo_gateway"} and mode:
+            return {"x-kilocode-mode": mode}
+        return {}

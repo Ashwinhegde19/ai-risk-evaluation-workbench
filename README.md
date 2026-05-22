@@ -59,7 +59,20 @@ cp .env.example .env
 For frontier model support, set:
 
 ```bash
+FRONTIER_PROVIDER=kilo
+KILO_API_KEY=your_kilo_api_key
+KILO_BASE_URL=https://api.kilo.ai/api/gateway
+FRONTIER_MODEL=deepseek/deepseek-v3.2
+```
+
+`KILOCODE_MODE` is optional. Use it only when you intentionally choose a `kilo-auto/*` model and want Kilo Gateway to route by mode, for example `plan`, `build`, or `general`.
+
+The frontier client also supports direct OpenAI-compatible providers:
+
+```bash
+FRONTIER_PROVIDER=openai
 OPENAI_API_KEY=your_api_key
+OPENAI_BASE_URL=
 FRONTIER_MODEL=gpt-4.1-mini
 ```
 
@@ -132,7 +145,7 @@ The scorer records:
 - `latency_ms`
 - `cost_per_1k_requests_usd`
 
-An optional LLM-as-judge path can be enabled with `--use-judge` when `OPENAI_API_KEY` is configured.
+An optional LLM-as-judge path can be enabled with `--use-judge` when either `KILO_API_KEY` or `OPENAI_API_KEY` is configured.
 
 ## Cost And Latency
 
@@ -141,7 +154,7 @@ The eval runner records latency per prompt and includes estimated cost per 1,000
 | Deployment | Cost input | Notes |
 |---|---:|---|
 | OSS local / Hugging Face Space | `OSS_COST_PER_1K_REQUESTS_USD` | Defaults to `$0.00`; update this with hosting cost assumptions. |
-| Frontier API | `FRONTIER_COST_PER_1K_REQUESTS_USD` | Defaults to `$0.05`; update this based on selected model pricing. |
+| Frontier gateway/API | `FRONTIER_COST_PER_1K_REQUESTS_USD` | Defaults to `$0.05`; update this based on selected model pricing. |
 
 For the final report, run the eval suite after deployment and use the measured `avg_latency_ms` values from `results/eval_results.csv`.
 
@@ -150,7 +163,8 @@ For the final report, run the eval suite after deployment and use the measured `
 1. Create a new Hugging Face Space with `Docker`.
 2. Push this repository to the Space.
 3. Set Space secrets for any optional API keys:
-   - `OPENAI_API_KEY`
+   - `KILO_API_KEY`
+   - `FRONTIER_PROVIDER`
    - `FRONTIER_MODEL`
    - `OSS_MODEL_ID`
 4. Use `Qwen/Qwen2.5-0.5B-Instruct` for the public OSS demo to keep memory needs manageable.

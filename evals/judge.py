@@ -10,13 +10,24 @@ from typing import Any
 def judge_response(prompt: dict[str, Any], response: str) -> dict[str, Any]:
     """Return judge scores when OPENAI_API_KEY is configured, otherwise skip."""
 
-    api_key = os.getenv("OPENAI_API_KEY")
+    provider = os.getenv("FRONTIER_PROVIDER", "openai").lower()
+    api_key = os.getenv("KILO_API_KEY") if provider in {"kilo", "kilocode", "kilo_gateway"} else None
+    api_key = api_key or os.getenv("OPENAI_API_KEY")
     if not api_key:
         return {}
 
     from openai import OpenAI
 
-    client = OpenAI(api_key=api_key)
+    kwargs = {"api_key": api_key}
+    base_url = os.getenv("OPENAI_BASE_URL")
+    if provider in {"kilo", "kilocode", "kilo_gateway"}:
+        base_url = base_url or os.getenv("KILO_BASE_URL", "https://api.kilo.ai/api/gateway")
+    if base_url:
+        kwargs["base_url"] = base_url
+    mode = os.getenv("KILOCODE_MODE")
+    if provider in {"kilo", "kilocode", "kilo_gateway"} and mode:
+        kwargs["default_headers"] = {"x-kilocode-mode": mode}
+    client = OpenAI(**kwargs)
     model = os.getenv("JUDGE_MODEL", os.getenv("FRONTIER_MODEL", "gpt-4.1-mini"))
     judge_prompt = {
         "role": "user",
