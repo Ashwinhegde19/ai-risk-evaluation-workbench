@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ importlib.import_module("chainlit.message").local_steps = _local_steps
 ROOT = Path(__file__).resolve().parent
 RESULTS_PATH = ROOT / "results" / "eval_results.csv"
 REPORT_PATH = ROOT / "reports" / "evaluation_report.pdf"
+LOG_PATH = ROOT / "logs" / "chat_logs.jsonl"
 
 MODEL_OPTIONS = {
     "Open Source Assistant": "oss",
@@ -107,6 +109,7 @@ def action_bar() -> list[cl.Action]:
         cl.Action(name="select_oss", payload={}, label="Use OSS", icon="cpu"),
         cl.Action(name="select_frontier", payload={}, label="Use Frontier", icon="cloud"),
         cl.Action(name="reset_memory", payload={}, label="Reset Memory", icon="rotate-ccw"),
+        cl.Action(name="view_logs", payload={}, label="View Logs", icon="list"),
         cl.Action(name="run_smoke_eval", payload={}, label="Run 5-Prompt Eval", icon="activity"),
         cl.Action(name="generate_report", payload={}, label="Generate Report", icon="file-text"),
     ]
@@ -133,6 +136,69 @@ def render_summary_table(df) -> str:
             )
         )
     return "\n".join(lines)
+
+
+def read_recent_logs(limit: int = 8) -> list[dict[str, Any]]:
+    if not LOG_PATH.exists():
+        return []
+
+    records: list[dict[str, Any]] = []
+    for line in LOG_PATH.read_text(encoding="utf-8").splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("event") == "chat_response":
+            records.append(record)
+    return records[-limit:]
+
+
+def render_logs_table(records: list[dict[str, Any]]) -> str:
+    if not records:
+        return "No chat logs found yet. Send a prompt first, then open the log viewer again."
+
+    lines = [
+        "| Time | Model | Latency | Input | Output | Blocked | Prompt |",
+        "|---|---|---:|---|---|---|---|",
+    ]
+    for record in reversed(records):
+        metadata = record.get("metadata") or {}
+        lines.append(
+            "| {time} | {model} | {latency} ms | {input_safety} | {output_safety} | "
+            "{blocked} | {prompt} |".format(
+                time=short_time(str(record.get("timestamp", ""))),
+                model=escape_table(short_model(str(record.get("model", "")))),
+                latency=int(record.get("latency_ms") or 0),
+                input_safety=escape_table(str(record.get("input_safety", ""))),
+                output_safety=escape_table(str(record.get("output_safety", ""))),
+                blocked=bool(metadata.get("blocked_before_model")),
+                prompt=escape_table(shorten(str(record.get("prompt", "")), 64)),
+            )
+        )
+    return "\n".join(lines)
+
+
+def short_model(model_name: str) -> str:
+    if "/" in model_name:
+        return model_name.rsplit("/", 1)[-1]
+    return model_name
+
+
+def short_time(timestamp: str) -> str:
+    if "T" not in timestamp:
+        return timestamp[:19]
+    return timestamp.split("T", 1)[1][:8]
+
+
+def shorten(text: str, limit: int) -> str:
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= limit:
+        return collapsed
+    return f"{collapsed[: limit - 3]}..."
+
+
+def escape_table(text: str) -> str:
+    return text.replace("|", "\\|")
 
 
 async def send_settings_panel(settings: dict[str, Any]) -> None:
@@ -250,6 +316,17 @@ async def reset_memory(action: cl.Action) -> None:
     if hasattr(action, "remove"):
         await action.remove()
     await cl.Message(content="Conversation memory cleared.", actions=action_bar()).send()
+
+
+@cl.action_callback("view_logs")
+async def view_logs(action: cl.Action) -> None:
+    if hasattr(action, "remove"):
+        await action.remove()
+    records = read_recent_logs()
+    await cl.Message(
+        content=f"## Recent Observability Logs\n\n{render_logs_table(records)}",
+        actions=action_bar(),
+    ).send()
 
 
 @cl.action_callback("run_smoke_eval")
