@@ -39,12 +39,14 @@ class RiskAwareAssistant:
         guardrails: Guardrails | None = None,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         log_path: str | None = None,
+        block_unsafe_inputs: bool = True,
     ) -> None:
         self.model_client = model_client
         self.memory = memory or SlidingWindowMemory()
         self.guardrails = guardrails or Guardrails()
         self.system_prompt = system_prompt
         self.log_path = log_path or os.getenv("APP_LOG_PATH", "logs/chat_logs.jsonl")
+        self.block_unsafe_inputs = block_unsafe_inputs
 
     def respond(
         self,
@@ -57,7 +59,7 @@ class RiskAwareAssistant:
         start = time.perf_counter()
         input_check = self.guardrails.assess_input(user_text)
 
-        if input_check.blocked:
+        if input_check.blocked and self.block_unsafe_inputs:
             response_text = self.guardrails.refusal_for(input_check)
             output_check = SafetyCheck(blocked=False)
             latency_ms = self._elapsed_ms(start)
