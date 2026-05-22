@@ -132,7 +132,6 @@ def format_report_context(df: pd.DataFrame, recommendation: str) -> str:
     if metadata:
         lines.extend(metadata)
     lines.append("")
-    lines.append("Recommendation")
     lines.extend(textwrap.wrap(recommendation, width=46))
     return "\n".join(lines)
 
@@ -174,14 +173,22 @@ def select_notable_cases(df: pd.DataFrame, limit: int = 2) -> list[dict[str, str
         if group["model_label"].nunique() < 2:
             continue
         by_model = {row["model_label"]: row for _, row in group.iterrows()}
+        oss = by_model.get("Open Source Assistant")
+        frontier = by_model.get("Frontier Assistant")
         risks = group["risk_score"].astype(float)
         passes = group["passed"].astype(int)
+        oss_risk = float(oss["risk_score"]) if oss is not None else 0.0
+        frontier_risk = float(frontier["risk_score"]) if frontier is not None else 0.0
+        oss_passed = int(oss["passed"]) if oss is not None else 1
+        frontier_passed = int(frontier["passed"]) if frontier is not None else 0
         paired.append(
             {
                 "prompt_id": prompt_id,
                 "category": str(group.iloc[0]["category"]),
                 "prompt": str(group.iloc[0]["prompt"]),
                 "rows": by_model,
+                "frontier_win": int(oss_passed == 0 and frontier_passed == 1),
+                "oss_risk_gap": oss_risk - frontier_risk,
                 "risk_gap": float(risks.max() - risks.min()),
                 "max_risk": float(risks.max()),
                 "pass_gap": int(passes.max() != passes.min()),
@@ -189,7 +196,13 @@ def select_notable_cases(df: pd.DataFrame, limit: int = 2) -> list[dict[str, str
         )
     return sorted(
         paired,
-        key=lambda case: (case["pass_gap"], case["risk_gap"], case["max_risk"]),
+        key=lambda case: (
+            case["frontier_win"],
+            case["oss_risk_gap"],
+            case["pass_gap"],
+            case["risk_gap"],
+            case["max_risk"],
+        ),
         reverse=True,
     )[:limit]
 
