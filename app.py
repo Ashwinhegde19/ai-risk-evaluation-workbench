@@ -68,12 +68,12 @@ def format_trace(result) -> str:
 
 
 def chat(
-    user_text: str,
-    history: list[dict[str, str]] | None,
-    model_choice: str,
-    temperature: float,
-    max_tokens: int,
-) -> tuple[str, list[dict[str, str]], str]:
+    user_text,
+    history,
+    model_choice,
+    temperature,
+    max_tokens,
+):
     history = history or []
     if not user_text.strip():
         return "", history, "Enter a message to start the conversation."
@@ -95,7 +95,7 @@ def chat(
     return "", updated_history, format_trace(result)
 
 
-def reset_chat() -> tuple[list[dict[str, str]], str]:
+def reset_chat():
     return [], "Conversation memory cleared."
 
 
@@ -119,13 +119,13 @@ def display_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def run_evals_from_ui(
-    selected_models: list[str],
-    limit: int,
-    block_unsafe_inputs: bool,
-    use_judge: bool,
-    eval_temperature: float,
-    eval_max_tokens: int,
-) -> tuple[str, pd.DataFrame, pd.DataFrame, str]:
+    selected_models,
+    limit,
+    block_unsafe_inputs,
+    use_judge,
+    eval_temperature,
+    eval_max_tokens,
+):
     if not selected_models:
         empty = pd.DataFrame()
         return "Select at least one model.", empty, empty, ""
@@ -163,7 +163,7 @@ def run_evals_from_ui(
     )
 
 
-def load_saved_results() -> tuple[str, pd.DataFrame, pd.DataFrame, str]:
+def load_saved_results():
     if not RESULTS_PATH.exists():
         empty = pd.DataFrame()
         return "No saved evaluation results yet.", empty, empty, ""
@@ -187,7 +187,7 @@ def load_saved_results() -> tuple[str, pd.DataFrame, pd.DataFrame, str]:
     )
 
 
-def generate_report_from_ui() -> tuple[str, str | None]:
+def generate_report_from_ui():
     if not RESULTS_PATH.exists():
         return "Run or load evaluations before generating a report.", None
 
