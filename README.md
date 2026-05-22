@@ -83,6 +83,14 @@ For OSS model selection, set:
 OSS_MODEL_ID=Qwen/Qwen2.5-0.5B-Instruct
 ```
 
+The default OSS model is intentionally small because it is practical for a public Hugging Face Space and local testing on an M1 MacBook Air. For a stronger local-quality run, use:
+
+```bash
+OSS_MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct
+```
+
+This optional 1.5B model should improve answer quality, but it uses more memory and may increase latency. The report should mention which OSS model was used for a given eval run.
+
 ## Run The App
 
 ```bash
