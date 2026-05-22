@@ -104,10 +104,16 @@ def settings_summary(settings: dict[str, Any]) -> str:
     )
 
 
-def action_bar() -> list[cl.Action]:
+def model_actions() -> list[cl.Action]:
     return [
         cl.Action(name="select_oss", payload={}, label="Use OSS", icon="cpu"),
         cl.Action(name="select_frontier", payload={}, label="Use Frontier", icon="cloud"),
+    ]
+
+
+def control_actions() -> list[cl.Action]:
+    return [
+        *model_actions(),
         cl.Action(name="reset_memory", payload={}, label="Reset Memory", icon="rotate-ccw"),
         cl.Action(name="view_logs", payload={}, label="View Logs", icon="list"),
         cl.Action(name="run_smoke_eval", payload={}, label="Run 5-Prompt Eval", icon="activity"),
@@ -249,7 +255,7 @@ async def on_chat_start() -> None:
             "The gear icon beside the message box opens advanced settings.\n\n"
             f"{settings_summary(DEFAULT_SETTINGS)}"
         ),
-        actions=action_bar(),
+        actions=control_actions(),
     ).send()
 
 
@@ -259,7 +265,6 @@ async def on_settings_update(settings: dict[str, Any]) -> None:
     cl.user_session.set("settings", merged)
     await cl.Message(
         content=f"Settings updated.\n\n{settings_summary(merged)}",
-        actions=action_bar(),
     ).send()
 
 
@@ -284,7 +289,6 @@ async def on_message(message: cl.Message) -> None:
             display="side",
         )
     ]
-    response_message.actions = action_bar()
     await response_message.update()
 
 
@@ -292,11 +296,8 @@ async def set_assistant_choice(assistant_name: str, action: cl.Action) -> None:
     settings = get_settings()
     settings["assistant"] = assistant_name
     cl.user_session.set("settings", settings)
-    if hasattr(action, "remove"):
-        await action.remove()
     await cl.Message(
         content=f"Switched to **{assistant_name}**.\n\n{settings_summary(settings)}",
-        actions=action_bar(),
     ).send()
 
 
@@ -313,27 +314,19 @@ async def select_frontier(action: cl.Action) -> None:
 @cl.action_callback("reset_memory")
 async def reset_memory(action: cl.Action) -> None:
     get_memory().reset()
-    if hasattr(action, "remove"):
-        await action.remove()
-    await cl.Message(content="Conversation memory cleared.", actions=action_bar()).send()
+    await cl.Message(content="Conversation memory cleared.").send()
 
 
 @cl.action_callback("view_logs")
 async def view_logs(action: cl.Action) -> None:
-    if hasattr(action, "remove"):
-        await action.remove()
     records = read_recent_logs()
     await cl.Message(
         content=f"## Recent Observability Logs\n\n{render_logs_table(records)}",
-        actions=action_bar(),
     ).send()
 
 
 @cl.action_callback("run_smoke_eval")
 async def run_smoke_eval(action: cl.Action) -> None:
-    if hasattr(action, "remove"):
-        await action.remove()
-
     settings = get_settings()
     status = cl.Message(content=f"Running a 5-prompt eval for **{settings['assistant']}**...")
     await status.send()
@@ -360,30 +353,24 @@ async def run_smoke_eval(action: cl.Action) -> None:
     status.elements = [
         cl.File(name="eval_results.csv", path=str(RESULTS_PATH), display="inline")
     ]
-    status.actions = action_bar()
     await status.update()
 
 
 @cl.action_callback("generate_report")
 async def generate_report_action(action: cl.Action) -> None:
-    if hasattr(action, "remove"):
-        await action.remove()
-
     if not RESULTS_PATH.exists():
         await cl.Message(
             content="No saved eval results found yet. Run the smoke eval or CLI eval first.",
-            actions=action_bar(),
         ).send()
         return
 
     try:
         output = await cl.make_async(generate_report)(RESULTS_PATH, REPORT_PATH)
     except Exception as exc:
-        await cl.Message(content=f"Report generation failed: `{exc}`", actions=action_bar()).send()
+        await cl.Message(content=f"Report generation failed: `{exc}`").send()
         return
 
     await cl.Message(
         content=f"Generated `{output}`.",
         elements=[cl.File(name="evaluation_report.pdf", path=str(output), display="inline")],
-        actions=action_bar(),
     ).send()
