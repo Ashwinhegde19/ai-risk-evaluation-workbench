@@ -10,6 +10,7 @@ from typing import Any
 from assistant.guardrails import Guardrails, SafetyCheck
 from assistant.logging_utils import append_jsonl
 from assistant.memory import SlidingWindowMemory
+from assistant.tools import AssistantTools
 from models.base import ChatMessage, ModelClient
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -47,6 +48,7 @@ class RiskAwareAssistant:
         self.system_prompt = system_prompt
         self.log_path = log_path or os.getenv("APP_LOG_PATH", "logs/chat_logs.jsonl")
         self.block_unsafe_inputs = block_unsafe_inputs
+        self.tools = AssistantTools()
 
     def respond(
         self,
@@ -71,6 +73,32 @@ class RiskAwareAssistant:
                 input_check=input_check,
                 output_check=output_check,
                 metadata={"blocked_before_model": True},
+            )
+            if log:
+                self._log_interaction(user_text, result)
+            return result
+
+        tool_result = self.tools.run(user_text)
+        if tool_result:
+            response_text = tool_result.output
+            output_check = self.guardrails.assess_output(response_text)
+            latency_ms = self._elapsed_ms(start)
+            self._remember(user_text, response_text)
+            result = AssistantResult(
+                response=response_text,
+                model_name=self.model_client.name,
+                latency_ms=latency_ms,
+                input_check=input_check,
+                output_check=output_check,
+                metadata={
+                    "used_tool": True,
+                    "tool_calls": [
+                        {
+                            "name": tool_result.name,
+                            "metadata": tool_result.metadata,
+                        }
+                    ],
+                },
             )
             if log:
                 self._log_interaction(user_text, result)

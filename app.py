@@ -83,12 +83,15 @@ def format_trace(result) -> str:
     output_categories = ", ".join(result.output_check.categories) or "none"
     blocked = result.metadata.get("blocked_before_model", False)
     error = result.metadata.get("error")
+    tool_calls = result.metadata.get("tool_calls") or []
+    tool_names = ", ".join(str(call.get("name", "unknown")) for call in tool_calls) or "none"
     lines = [
         f"Model: {result.model_name}",
         f"Latency: {result.latency_ms} ms",
         f"Input safety: {result.input_check.label} ({input_categories})",
         f"Output safety: {result.output_check.label} ({output_categories})",
         f"Blocked before model: {blocked}",
+        f"Tools: {tool_names}",
     ]
     if error:
         lines.append(f"Backend error: {error}")
@@ -164,17 +167,18 @@ def render_logs_table(records: list[dict[str, Any]]) -> str:
         return "No chat logs found yet. Send a prompt first, then open the log viewer again."
 
     lines = [
-        "| Time | Model | Latency | Input | Output | Blocked | Prompt |",
-        "|---|---|---:|---|---|---|---|",
+        "| Time | Model | Latency | Tools | Input | Output | Blocked | Prompt |",
+        "|---|---|---:|---|---|---|---|---|",
     ]
     for record in reversed(records):
         metadata = record.get("metadata") or {}
         lines.append(
-            "| {time} | {model} | {latency} ms | {input_safety} | {output_safety} | "
+            "| {time} | {model} | {latency} ms | {tools} | {input_safety} | {output_safety} | "
             "{blocked} | {prompt} |".format(
                 time=short_time(str(record.get("timestamp", ""))),
                 model=escape_table(short_model(str(record.get("model", "")))),
                 latency=int(record.get("latency_ms") or 0),
+                tools=escape_table(render_tool_names(metadata)),
                 input_safety=escape_table(str(record.get("input_safety", ""))),
                 output_safety=escape_table(str(record.get("output_safety", ""))),
                 blocked=bool(metadata.get("blocked_before_model")),
@@ -182,6 +186,12 @@ def render_logs_table(records: list[dict[str, Any]]) -> str:
             )
         )
     return "\n".join(lines)
+
+
+def render_tool_names(metadata: dict[str, Any]) -> str:
+    tool_calls = metadata.get("tool_calls") or []
+    names = [str(call.get("name", "unknown")) for call in tool_calls if isinstance(call, dict)]
+    return ", ".join(names) if names else "none"
 
 
 def short_model(model_name: str) -> str:
@@ -252,7 +262,8 @@ async def on_chat_start() -> None:
             "Chat with the OSS or frontier assistant while the app tracks memory, latency, "
             "guardrail decisions, and safety metadata.\n\n"
             "Use the model buttons below to switch between OSS and Frontier before sending a prompt. "
-            "The gear icon beside the message box opens advanced settings.\n\n"
+            "Try `calculate: (42 * 17) / 3` or `create an AI risk checklist for a customer support assistant` "
+            "to see deterministic tool use. The gear icon beside the message box opens advanced settings.\n\n"
             f"{settings_summary(DEFAULT_SETTINGS)}"
         ),
         actions=control_actions(),
