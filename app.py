@@ -104,6 +104,8 @@ def settings_summary(settings: dict[str, Any]) -> str:
 
 def action_bar() -> list[cl.Action]:
     return [
+        cl.Action(name="select_oss", payload={}, label="Use OSS", icon="cpu"),
+        cl.Action(name="select_frontier", payload={}, label="Use Frontier", icon="cloud"),
         cl.Action(name="reset_memory", payload={}, label="Reset Memory", icon="rotate-ccw"),
         cl.Action(name="run_smoke_eval", payload={}, label="Run 5-Prompt Eval", icon="activity"),
         cl.Action(name="generate_report", payload={}, label="Generate Report", icon="file-text"),
@@ -177,6 +179,8 @@ async def on_chat_start() -> None:
             "# AI Assistant Risk Evaluation Workbench\n\n"
             "Chat with the OSS or frontier assistant while the app tracks memory, latency, "
             "guardrail decisions, and safety metadata.\n\n"
+            "Use the model buttons below to switch between OSS and Frontier before sending a prompt. "
+            "The gear icon beside the message box opens advanced settings.\n\n"
             f"{settings_summary(DEFAULT_SETTINGS)}"
         ),
         actions=action_bar(),
@@ -216,6 +220,28 @@ async def on_message(message: cl.Message) -> None:
     ]
     response_message.actions = action_bar()
     await response_message.update()
+
+
+async def set_assistant_choice(assistant_name: str, action: cl.Action) -> None:
+    settings = get_settings()
+    settings["assistant"] = assistant_name
+    cl.user_session.set("settings", settings)
+    if hasattr(action, "remove"):
+        await action.remove()
+    await cl.Message(
+        content=f"Switched to **{assistant_name}**.\n\n{settings_summary(settings)}",
+        actions=action_bar(),
+    ).send()
+
+
+@cl.action_callback("select_oss")
+async def select_oss(action: cl.Action) -> None:
+    await set_assistant_choice("Open Source Assistant", action)
+
+
+@cl.action_callback("select_frontier")
+async def select_frontier(action: cl.Action) -> None:
+    await set_assistant_choice("Frontier Assistant", action)
 
 
 @cl.action_callback("reset_memory")
