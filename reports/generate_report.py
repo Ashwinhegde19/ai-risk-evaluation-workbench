@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import textwrap
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -28,10 +29,13 @@ def generate_report(
     fig = plt.figure(figsize=(11, 8.5))
     fig.suptitle("AI Assistant Risk Evaluation Report", fontsize=18, fontweight="bold")
 
-    ax_pass = fig.add_subplot(2, 2, 1)
-    ax_risk = fig.add_subplot(2, 2, 2)
-    ax_latency = fig.add_subplot(2, 2, 3)
-    ax_table = fig.add_subplot(2, 2, 4)
+    grid = fig.add_gridspec(3, 3, height_ratios=[1.0, 0.9, 1.1])
+    ax_pass = fig.add_subplot(grid[0, 0])
+    ax_risk = fig.add_subplot(grid[0, 1])
+    ax_latency = fig.add_subplot(grid[0, 2])
+    ax_table = fig.add_subplot(grid[1, :2])
+    ax_recommendation = fig.add_subplot(grid[1, 2])
+    ax_cases = fig.add_subplot(grid[2, :])
 
     plot_bar(ax_pass, summary, "model_label", "pass_rate", "Pass Rate", "Rate")
     risk_cols = ["hallucination_rate", "unsafe_rate", "bias_risk_rate"]
@@ -70,8 +74,18 @@ def generate_report(
     ax_table.set_title("Deployment Snapshot")
 
     recommendation = build_recommendation(summary)
-    fig.text(0.08, 0.03, recommendation, fontsize=10, wrap=True)
-    fig.tight_layout(rect=[0, 0.07, 1, 0.94])
+    ax_recommendation.axis("off")
+    ax_recommendation.set_title("Recommendation")
+    ax_recommendation.text(
+        0,
+        0.75,
+        "\n".join(textwrap.wrap(recommendation, width=46)),
+        fontsize=9,
+        va="top",
+    )
+
+    render_notable_cases(ax_cases, df)
+    fig.tight_layout(rect=[0, 0.02, 1, 0.94])
     fig.savefig(output, format="pdf")
     plt.close(fig)
     return output
@@ -110,6 +124,79 @@ def build_recommendation(summary: pd.DataFrame) -> str:
         "The OSS model remains attractive for cost control and deployment ownership, but should "
         "be paired with guardrails, monitoring, and targeted evals before high-risk use."
     )
+
+
+def render_notable_cases(ax, df: pd.DataFrame) -> None:
+    ax.axis("off")
+    ax.set_title("Notable Eval Cases", loc="left")
+    cases = select_notable_cases(df)
+    if not cases:
+        ax.text(0, 0.85, "No notable failures found in this run.", fontsize=9, va="top")
+        return
+
+    y = 0.88
+    for index, case in enumerate(cases, start=1):
+        text = format_case(index, case)
+        ax.text(0, y, text, fontsize=8.2, va="top", family="monospace")
+        y -= 0.43
+
+
+def select_notable_cases(df: pd.DataFrame, limit: int = 2) -> list[dict[str, str]]:
+    paired = []
+    for prompt_id, group in df.groupby("prompt_id"):
+        if group["model_label"].nunique() < 2:
+            continue
+        by_model = {row["model_label"]: row for _, row in group.iterrows()}
+        risks = group["risk_score"].astype(float)
+        passes = group["passed"].astype(int)
+        paired.append(
+            {
+                "prompt_id": prompt_id,
+                "category": str(group.iloc[0]["category"]),
+                "prompt": str(group.iloc[0]["prompt"]),
+                "rows": by_model,
+                "risk_gap": float(risks.max() - risks.min()),
+                "max_risk": float(risks.max()),
+                "pass_gap": int(passes.max() != passes.min()),
+            }
+        )
+    return sorted(
+        paired,
+        key=lambda case: (case["pass_gap"], case["risk_gap"], case["max_risk"]),
+        reverse=True,
+    )[:limit]
+
+
+def format_case(index: int, case: dict[str, str]) -> str:
+    oss = case["rows"].get("Open Source Assistant")
+    frontier = case["rows"].get("Frontier Assistant")
+    lines = [
+        f"Case {index}: {case['category']} ({case['prompt_id']})",
+        f"Prompt: {shorten(case['prompt'], 132)}",
+    ]
+    if oss is not None:
+        lines.append(
+            "OSS: "
+            f"pass={int(oss['passed'])}, risk={int(oss['risk_score'])}; "
+            f"{shorten(str(oss['response']), 150)}"
+        )
+    if frontier is not None:
+        lines.append(
+            "Frontier: "
+            f"pass={int(frontier['passed'])}, risk={int(frontier['risk_score'])}; "
+            f"{shorten(str(frontier['response']), 150)}"
+        )
+    wrapped_lines = []
+    for line in lines:
+        wrapped_lines.extend(textwrap.wrap(line, width=152, subsequent_indent="  "))
+    return "\n".join(wrapped_lines)
+
+
+def shorten(text: str, limit: int) -> str:
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= limit:
+        return collapsed
+    return f"{collapsed[: limit - 3]}..."
 
 
 def parse_args() -> argparse.Namespace:
