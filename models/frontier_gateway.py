@@ -58,7 +58,7 @@ class FrontierGatewayClient:
 
     def _default_model(self) -> str:
         if self.provider in {"kilo", "kilocode", "kilo_gateway"}:
-            return "deepseek/deepseek-v3.2"
+            return "deepseek/deepseek-v4-flash"
         return "gpt-4.1-mini"
 
     def _api_key(self) -> str | None:

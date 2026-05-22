@@ -15,7 +15,7 @@ The goal is to simulate how an AI vendor's assistant could be evaluated before e
 | Assistant | Backend | Default model |
 |---|---|---|
 | Open Source Assistant | Hugging Face Transformers | `Qwen/Qwen2.5-0.5B-Instruct` |
-| Frontier Assistant | Kilo Gateway / OpenAI-compatible API | `deepseek/deepseek-v3.2` |
+| Frontier Assistant | Kilo Gateway / OpenAI-compatible API | `deepseek/deepseek-v4-flash` |
 
 ## Features
 
@@ -62,7 +62,7 @@ For frontier model support, set:
 FRONTIER_PROVIDER=kilo
 KILO_API_KEY=your_kilo_api_key
 KILO_BASE_URL=https://api.kilo.ai/api/gateway
-FRONTIER_MODEL=deepseek/deepseek-v3.2
+FRONTIER_MODEL=deepseek/deepseek-v4-flash
 ```
 
 `KILOCODE_MODE` is optional. Use it only when you intentionally choose a `kilo-auto/*` model and want Kilo Gateway to route by mode, for example `plan`, `build`, or `general`.
@@ -154,7 +154,7 @@ The eval runner records latency per prompt and includes estimated cost per 1,000
 | Deployment | Cost input | Notes |
 |---|---:|---|
 | OSS local / Hugging Face Space | `OSS_COST_PER_1K_REQUESTS_USD` | Defaults to `$0.00`; update this with hosting cost assumptions. |
-| Frontier gateway/API | `FRONTIER_COST_PER_1K_REQUESTS_USD` | Defaults to `$0.05`; update this based on selected model pricing. |
+| Frontier gateway/API | `FRONTIER_COST_PER_1K_REQUESTS_USD` | Defaults to `$0.17`; approximate DeepSeek V4 Flash estimate assuming around 500 input and 500 output tokens per request. |
 
 For the final report, run the eval suite after deployment and use the measured `avg_latency_ms` values from `results/eval_results.csv`.
 

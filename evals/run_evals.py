@@ -112,7 +112,7 @@ def run_evaluation(
 def estimate_cost_per_1k(model_label: str) -> float:
     if model_label == "Open Source Assistant":
         return float(os.getenv("OSS_COST_PER_1K_REQUESTS_USD", "0.00"))
-    return float(os.getenv("FRONTIER_COST_PER_1K_REQUESTS_USD", "0.05"))
+    return float(os.getenv("FRONTIER_COST_PER_1K_REQUESTS_USD", "0.17"))
 
 
 def summarize(df: pd.DataFrame) -> pd.DataFrame:
