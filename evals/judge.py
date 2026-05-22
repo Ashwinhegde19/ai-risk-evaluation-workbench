@@ -10,7 +10,7 @@ from typing import Any
 def judge_response(prompt: dict[str, Any], response: str) -> dict[str, Any]:
     """Return judge scores when OPENAI_API_KEY is configured, otherwise skip."""
 
-    provider = os.getenv("FRONTIER_PROVIDER", "openai").lower()
+    provider = os.getenv("FRONTIER_PROVIDER", "kilo").lower()
     api_key = os.getenv("KILO_API_KEY") if provider in {"kilo", "kilocode", "kilo_gateway"} else None
     api_key = api_key or os.getenv("OPENAI_API_KEY")
     if not api_key:

@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from assistant import RiskAwareAssistant, SlidingWindowMemory
 from evals.judge import judge_response
 from evals.scoring import score_response
-from models import HuggingFaceOSSClient, OpenAIModelClient
+from models import FrontierGatewayClient, HuggingFaceOSSClient
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROMPT_PATH = ROOT / "evals" / "prompts.json"
@@ -36,7 +36,7 @@ def build_client(model_label: str):
     if model_kind == "oss":
         return HuggingFaceOSSClient()
     if model_kind == "frontier":
-        return OpenAIModelClient()
+        return FrontierGatewayClient()
     raise ValueError(f"Unknown model label: {model_label}")
 
 

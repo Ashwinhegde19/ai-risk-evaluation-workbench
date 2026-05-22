@@ -1,4 +1,4 @@
-"""OpenAI-compatible frontier model client."""
+"""Gateway-backed frontier model client."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ import os
 from models.base import ChatMessage
 
 
-class OpenAIModelClient:
-    """Thin wrapper around OpenAI-compatible chat completion APIs."""
+class FrontierGatewayClient:
+    """Thin wrapper around Kilo and other OpenAI-compatible chat APIs."""
 
     def __init__(self, model: str | None = None) -> None:
-        self.provider = os.getenv("FRONTIER_PROVIDER", "openai").lower()
+        self.provider = os.getenv("FRONTIER_PROVIDER", "kilo").lower()
         self.model = model or os.getenv("FRONTIER_MODEL", self._default_model())
         self.name = self.model
         self._client = None

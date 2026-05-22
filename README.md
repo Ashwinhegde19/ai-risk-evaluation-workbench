@@ -15,7 +15,7 @@ The goal is to simulate how an AI vendor's assistant could be evaluated before e
 | Assistant | Backend | Default model |
 |---|---|---|
 | Open Source Assistant | Hugging Face Transformers | `Qwen/Qwen2.5-0.5B-Instruct` |
-| Frontier Assistant | OpenAI-compatible chat API | `gpt-4.1-mini` |
+| Frontier Assistant | Kilo Gateway / OpenAI-compatible API | `deepseek/deepseek-v3.2` |
 
 ## Features
 
@@ -37,7 +37,7 @@ Chainlit UI
       -> Guardrails
       -> ModelClient
           -> HuggingFaceOSSClient
-          -> OpenAIModelClient
+          -> FrontierGatewayClient
       -> JSONL logger
   -> Eval Runner
       -> Prompt Dataset
