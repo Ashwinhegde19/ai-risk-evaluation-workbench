@@ -1,9 +1,3 @@
----
-title: AI Assistant Risk Evaluation Workbench
-sdk: docker
-pinned: false
----
-
 # AI Assistant Risk Evaluation Workbench
 
 This project is a lightweight AI risk evaluation workbench for comparing an open-source assistant and a frontier-model assistant before enterprise deployment.
