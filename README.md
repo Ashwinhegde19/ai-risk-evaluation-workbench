@@ -2,7 +2,18 @@
 
 This project is a lightweight AI risk evaluation workbench for comparing an open-source assistant and a frontier-model assistant before enterprise deployment.
 
-It simulates the kind of pre-deployment review an AI vendor would need for customer-facing assistants: hallucination risk, bias and harmful output risk, jailbreak resistance, refusal quality, latency, and cost. Both assistants share the same UI, system prompt, short-term memory, guardrails, logging, and evaluation suite. Only the model backend changes, which makes the comparison easier to reason about.
+It simulates the kind of pre-deployment review an AI vendor would need for customer-facing assistants: hallucination risk, bias and harmful output risk, jailbreak resistance, refusal quality, latency, and cost. Both assistants share the same UI, system prompt, short-term memory, guardrails, tool layer, logging, and evaluation suite. Only the model backend changes, which makes the comparison easier to reason about.
+
+## Live Demo
+
+- Live app: [Hugging Face Space](https://ashwinhegde19-ai-risk-evaluation-workbench.hf.space)
+- Space repository: [ashwinhegde19/ai-risk-evaluation-workbench](https://huggingface.co/spaces/ashwinhegde19/ai-risk-evaluation-workbench)
+
+## Screenshots
+
+![AI Assistant Risk Evaluation Workbench home screen](assets/screenshots/app-home.png)
+
+![Deterministic AI-risk checklist tool call](assets/screenshots/tool-use.png)
 
 ## Assistants
 
@@ -14,6 +25,7 @@ It simulates the kind of pre-deployment review an AI vendor would need for custo
 ## Features
 
 - Multi-turn chat with sliding-window short-term memory.
+- Deterministic tool use for safe calculator requests and AI-risk checklist generation.
 - OSS and frontier model clients behind the same interface.
 - Lightweight input and output guardrails for harmful, privacy, jailbreak, and bias-sensitive prompts.
 - JSONL chat logs for observability.
@@ -30,6 +42,7 @@ Chainlit UI
   -> RiskAwareAssistant
       -> SlidingWindowMemory
       -> Guardrails
+      -> AssistantTools
       -> ModelClient
           -> HuggingFaceOSSClient
           -> FrontierGatewayClient
@@ -95,8 +108,20 @@ The app exposes:
 
 - Visible model buttons for switching between OSS and frontier assistants.
 - Temperature, max-token, and guardrail settings.
-- Side-panel request traces with latency and safety metadata.
+- Side-panel request traces with latency, safety metadata, and tool-call metadata.
+- Deterministic tool examples: `calculate: (42 * 17) / 3` and `create an AI risk checklist for an insurance assistant`.
 - Actions to reset memory, view recent observability logs, run a 5-prompt smoke eval, and generate the PDF report.
+
+## Tool Use
+
+The assistant includes a small deterministic tool router before model generation. This keeps tool behavior auditable and identical across the OSS and frontier assistants.
+
+| Tool | Trigger | Purpose |
+|---|---|---|
+| `calculator` | Explicit `calculate`, `calculator`, or `compute` prompts | Safely evaluates arithmetic expressions without asking the model to do math. |
+| `ai_risk_checklist` | Prompts asking for AI risk, liability, or assistant-risk checklists | Generates a structured risk-control checklist aligned with hallucination, privacy, bias, prompt injection, harmful output, liability, and observability concerns. |
+
+Tool calls are recorded in chat metadata and shown in the request trace/log viewer.
 
 ## Run Evals From CLI
 
@@ -180,6 +205,7 @@ For the final report, run the eval suite after deployment and use the measured `
 ## Tradeoffs
 
 - The guardrails are intentionally lightweight and rule-based. This makes the behavior transparent, but it is not a replacement for a production moderation system.
+- Tool use is deterministic and intentionally narrow, which keeps it auditable but less flexible than full agentic tool planning.
 - The OSS model is small enough for a public demo, but it will be less capable than larger OSS or frontier models.
 - The heuristic scorer is reproducible and fast, but nuanced safety and hallucination assessment benefits from manual review or LLM-as-judge scoring.
 - Sliding-window memory is simple and predictable, but it does not provide long-term user memory or retrieval.
