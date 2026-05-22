@@ -3,6 +3,8 @@
 __pycache__/
 *.pyc
 .DS_Store
+.chainlit/translations/
+.files/
 logs/*.jsonl
 results/*.csv
 results/*.json

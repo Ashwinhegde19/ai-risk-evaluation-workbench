@@ -1,12 +1,14 @@
-"""Gradio entrypoint for the AI Assistant Risk Evaluation Workbench."""
+"""Chainlit chat app for the AI Assistant Risk Evaluation Workbench."""
 
 from __future__ import annotations
 
+import importlib
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
-import gradio as gr
-import pandas as pd
+import chainlit as cl
+from chainlit.input_widget import Select, Slider, Switch
 from dotenv import load_dotenv
 
 from assistant import RiskAwareAssistant, SlidingWindowMemory
@@ -16,6 +18,13 @@ from reports.generate_report import generate_report
 
 load_dotenv()
 
+# Chainlit 2.x can inherit an unset local_steps context in some local runtimes.
+# Giving the shared ContextVar a default keeps callbacks stable without changing app logic.
+_local_steps = ContextVar("local_steps", default=None)
+importlib.import_module("chainlit.context").local_steps = _local_steps
+importlib.import_module("chainlit.step").local_steps = _local_steps
+importlib.import_module("chainlit.message").local_steps = _local_steps
+
 ROOT = Path(__file__).resolve().parent
 RESULTS_PATH = ROOT / "results" / "eval_results.csv"
 REPORT_PATH = ROOT / "reports" / "evaluation_report.pdf"
@@ -23,6 +32,13 @@ REPORT_PATH = ROOT / "reports" / "evaluation_report.pdf"
 MODEL_OPTIONS = {
     "Open Source Assistant": "oss",
     "Frontier Assistant": "frontier",
+}
+
+DEFAULT_SETTINGS = {
+    "assistant": "Open Source Assistant",
+    "temperature": 0.2,
+    "max_tokens": 512,
+    "block_unsafe_inputs": True,
 }
 
 _MODEL_CACHE: dict[str, Any] = {}
@@ -40,14 +56,24 @@ def get_model_client(model_choice: str):
     return _MODEL_CACHE[model_key]
 
 
-def memory_from_history(history: list[dict[str, str]] | None) -> SlidingWindowMemory:
-    memory = SlidingWindowMemory(max_messages=8)
-    for message in (history or [])[-8:]:
-        role = message.get("role")
-        content = message.get("content", "")
-        if role in {"user", "assistant"} and content:
-            memory.add(role, content)
+def get_settings() -> dict[str, Any]:
+    return {**DEFAULT_SETTINGS, **(cl.user_session.get("settings") or {})}
+
+
+def get_memory() -> SlidingWindowMemory:
+    memory = cl.user_session.get("memory")
+    if memory is None:
+        memory = SlidingWindowMemory(max_messages=8)
+        cl.user_session.set("memory", memory)
     return memory
+
+
+def build_assistant(settings: dict[str, Any]) -> RiskAwareAssistant:
+    return RiskAwareAssistant(
+        get_model_client(settings["assistant"]),
+        memory=get_memory(),
+        block_unsafe_inputs=bool(settings.get("block_unsafe_inputs", True)),
+    )
 
 
 def format_trace(result) -> str:
@@ -67,155 +93,35 @@ def format_trace(result) -> str:
     return "\n".join(lines)
 
 
-def chat(
-    user_text,
-    history,
-    model_choice,
-    temperature,
-    max_tokens,
-):
-    history = history or []
-    if not user_text.strip():
-        return "", history, "Enter a message to start the conversation."
-
-    assistant = RiskAwareAssistant(
-        get_model_client(model_choice),
-        memory=memory_from_history(history),
-    )
-    result = assistant.respond(
-        user_text.strip(),
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-    updated_history = [
-        *history,
-        {"role": "user", "content": user_text.strip()},
-        {"role": "assistant", "content": result.response},
-    ]
-    return "", updated_history, format_trace(result)
-
-
-def reset_chat():
-    return [], "Conversation memory cleared."
-
-
-def display_summary(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    view = df.copy()
-    for column in [
-        "pass_rate",
-        "hallucination_rate",
-        "unsafe_rate",
-        "correct_refusal_rate",
-        "bias_risk_rate",
-    ]:
-        if column in view:
-            view[column] = view[column].map(lambda value: f"{value:.0%}")
-    for column in ["avg_latency_ms", "avg_risk_score"]:
-        if column in view:
-            view[column] = view[column].map(lambda value: f"{value:.1f}")
-    return view
-
-
-def run_evals_from_ui(
-    selected_models,
-    limit,
-    block_unsafe_inputs,
-    use_judge,
-    eval_temperature,
-    eval_max_tokens,
-):
-    if not selected_models:
-        empty = pd.DataFrame()
-        return "Select at least one model.", empty, empty, ""
-
-    try:
-        df = run_evaluation(
-            model_labels=selected_models,
-            output_path=RESULTS_PATH,
-            limit=int(limit) if limit else None,
-            temperature=eval_temperature,
-            max_tokens=int(eval_max_tokens),
-            block_unsafe_inputs=block_unsafe_inputs,
-            use_judge=use_judge,
-        )
-    except Exception as exc:
-        empty = pd.DataFrame()
-        return f"Evaluation failed: {exc}", empty, empty, ""
-
-    summary_df = summarize(df)
+def settings_summary(settings: dict[str, Any]) -> str:
     return (
-        f"Wrote {len(df)} rows to {RESULTS_PATH}",
-        display_summary(summary_df),
-        df[
-            [
-                "model_label",
-                "prompt_id",
-                "category",
-                "passed",
-                "risk_score",
-                "latency_ms",
-                "score_notes",
-            ]
-        ],
-        build_risk_summary(summary_df),
+        f"Assistant: **{settings['assistant']}**\n"
+        f"Temperature: `{settings['temperature']}`\n"
+        f"Max tokens: `{int(settings['max_tokens'])}`\n"
+        f"Pre-model blocking: `{bool(settings['block_unsafe_inputs'])}`"
     )
 
 
-def load_saved_results():
-    if not RESULTS_PATH.exists():
-        empty = pd.DataFrame()
-        return "No saved evaluation results yet.", empty, empty, ""
-
-    df = pd.read_csv(RESULTS_PATH)
-    summary_df = summarize(df)
-    detail_cols = [
-        "model_label",
-        "prompt_id",
-        "category",
-        "passed",
-        "risk_score",
-        "latency_ms",
-        "score_notes",
+def action_bar() -> list[cl.Action]:
+    return [
+        cl.Action(name="reset_memory", payload={}, label="Reset Memory", icon="rotate-ccw"),
+        cl.Action(name="run_smoke_eval", payload={}, label="Run 5-Prompt Eval", icon="activity"),
+        cl.Action(name="generate_report", payload={}, label="Generate Report", icon="file-text"),
     ]
-    return (
-        f"Loaded {len(df)} rows from {RESULTS_PATH}",
-        display_summary(summary_df),
-        df[detail_cols],
-        build_risk_summary(summary_df),
-    )
 
 
-def generate_report_from_ui():
-    if not RESULTS_PATH.exists():
-        return "Run or load evaluations before generating a report.", None
-
-    try:
-        output = generate_report(RESULTS_PATH, REPORT_PATH)
-    except Exception as exc:
-        return f"Report generation failed: {exc}", None
-    return f"Wrote report to {output}", str(output)
-
-
-def build_risk_summary(summary_df: pd.DataFrame) -> str:
-    if summary_df.empty:
-        return ""
-
-    ranked = summary_df.sort_values(["avg_risk_score", "pass_rate"], ascending=[True, False])
-    best = ranked.iloc[0]
+def render_summary_table(df) -> str:
+    summary_df = summarize(df)
     lines = [
-        "## AI Risk Summary Card",
-        f"Recommended default: **{best['model_label']}**",
-        "",
-        "| Model | Pass rate | Hallucination | Unsafe | Bias risk | Avg latency | Avg risk |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| Model | Prompts | Pass | Hallucination | Unsafe | Bias | Avg latency | Risk |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for _, row in summary_df.iterrows():
         lines.append(
-            "| {model} | {pass_rate:.0%} | {hallucination:.0%} | {unsafe:.0%} | "
-            "{bias:.0%} | {latency:.0f} ms | {risk:.1f} |".format(
+            "| {model} | {prompts:.0f} | {pass_rate:.0%} | {hallucination:.0%} | "
+            "{unsafe:.0%} | {bias:.0%} | {latency:.0f} ms | {risk:.1f} |".format(
                 model=row["model_label"],
+                prompts=row["prompts"],
                 pass_rate=row["pass_rate"],
                 hallucination=row["hallucination_rate"],
                 unsafe=row["unsafe_rate"],
@@ -224,152 +130,157 @@ def build_risk_summary(summary_df: pd.DataFrame) -> str:
                 risk=row["avg_risk_score"],
             )
         )
-    lines.extend(
-        [
-            "",
-            "Recommendation: use the lowest-risk model for customer-facing or liability-sensitive workflows. "
-            "Use the OSS model when deployment ownership and cost control matter, but pair it with guardrails, "
-            "monitoring, and narrower use-case boundaries.",
-        ]
-    )
     return "\n".join(lines)
 
 
-def build_app() -> gr.Blocks:
-    with gr.Blocks(title="AI Assistant Risk Evaluation Workbench") as demo:
-        gr.Markdown("# AI Assistant Risk Evaluation Workbench")
-        gr.Markdown("Compare OSS and frontier assistants with shared memory, safety checks, and observability.")
+async def send_settings_panel(settings: dict[str, Any]) -> None:
+    await cl.ChatSettings(
+        [
+            Select(
+                id="assistant",
+                label="Assistant",
+                values=list(MODEL_OPTIONS.keys()),
+                initial=settings["assistant"],
+            ),
+            Slider(
+                id="temperature",
+                label="Temperature",
+                initial=float(settings["temperature"]),
+                min=0,
+                max=1,
+                step=0.05,
+            ),
+            Slider(
+                id="max_tokens",
+                label="Max tokens",
+                initial=float(settings["max_tokens"]),
+                min=64,
+                max=1024,
+                step=64,
+            ),
+            Switch(
+                id="block_unsafe_inputs",
+                label="Block unsafe inputs before model call",
+                initial=bool(settings["block_unsafe_inputs"]),
+            ),
+        ]
+    ).send()
 
-        with gr.Tab("Chat"):
-            with gr.Row():
-                model_choice = gr.Radio(
-                    list(MODEL_OPTIONS.keys()),
-                    value="Open Source Assistant",
-                    label="Assistant",
-                )
-                temperature = gr.Slider(
-                    minimum=0.0,
-                    maximum=1.0,
-                    value=0.2,
-                    step=0.05,
-                    label="Temperature",
-                )
-                max_tokens = gr.Slider(
-                    minimum=64,
-                    maximum=1024,
-                    value=512,
-                    step=64,
-                    label="Max tokens",
-                )
 
-            chatbot = gr.Chatbot(
-                label="Conversation",
-                type="messages",
-                height=520,
-            )
-            user_text = gr.Textbox(
-                label="Message",
-                placeholder="Ask a factual question, test memory, or try a safety-sensitive prompt.",
-                lines=3,
-            )
-            with gr.Row():
-                send = gr.Button("Send", variant="primary")
-                clear = gr.Button("Reset")
-            trace = gr.Textbox(
-                label="Request trace",
-                lines=7,
-                interactive=False,
-            )
+@cl.on_chat_start
+async def on_chat_start() -> None:
+    cl.user_session.set("memory", SlidingWindowMemory(max_messages=8))
+    cl.user_session.set("settings", DEFAULT_SETTINGS.copy())
+    await send_settings_panel(DEFAULT_SETTINGS)
+    await cl.Message(
+        content=(
+            "# AI Assistant Risk Evaluation Workbench\n\n"
+            "Chat with the OSS or frontier assistant while the app tracks memory, latency, "
+            "guardrail decisions, and safety metadata.\n\n"
+            f"{settings_summary(DEFAULT_SETTINGS)}"
+        ),
+        actions=action_bar(),
+    ).send()
 
-            send.click(
-                chat,
-                inputs=[user_text, chatbot, model_choice, temperature, max_tokens],
-                outputs=[user_text, chatbot, trace],
-            )
-            user_text.submit(
-                chat,
-                inputs=[user_text, chatbot, model_choice, temperature, max_tokens],
-                outputs=[user_text, chatbot, trace],
-            )
-            clear.click(reset_chat, outputs=[chatbot, trace])
 
-        with gr.Tab("Evaluation"):
-            with gr.Row():
-                selected_models = gr.CheckboxGroup(
-                    list(MODEL_OPTIONS.keys()),
-                    value=list(MODEL_OPTIONS.keys()),
-                    label="Models",
-                )
-                eval_limit = gr.Slider(
-                    minimum=1,
-                    maximum=28,
-                    value=8,
-                    step=1,
-                    label="Prompt limit",
-                )
-                eval_temperature = gr.Slider(
-                    minimum=0.0,
-                    maximum=1.0,
-                    value=0.0,
-                    step=0.05,
-                    label="Eval temperature",
-                )
-                eval_max_tokens = gr.Slider(
-                    minimum=64,
-                    maximum=1024,
-                    value=384,
-                    step=64,
-                    label="Eval max tokens",
-                )
-            with gr.Row():
-                block_unsafe_inputs = gr.Checkbox(
-                    value=False,
-                    label="Block unsafe inputs before model call",
-                )
-                use_judge = gr.Checkbox(
-                    value=False,
-                    label="Use LLM judge",
-                )
-            with gr.Row():
-                run_eval = gr.Button("Run Evaluation", variant="primary")
-                load_eval = gr.Button("Load Saved Results")
-                make_report = gr.Button("Generate PDF Report")
-            eval_status = gr.Textbox(label="Evaluation status", interactive=False)
-            report_file = gr.File(label="Evaluation report")
-            summary_table = gr.Dataframe(label="Summary metrics", interactive=False)
-            detail_table = gr.Dataframe(label="Prompt-level results", interactive=False)
+@cl.on_settings_update
+async def on_settings_update(settings: dict[str, Any]) -> None:
+    merged = {**DEFAULT_SETTINGS, **settings}
+    cl.user_session.set("settings", merged)
+    await cl.Message(
+        content=f"Settings updated.\n\n{settings_summary(merged)}",
+        actions=action_bar(),
+    ).send()
 
-        with gr.Tab("Risk Summary"):
-            risk_summary = gr.Markdown()
 
-        run_eval.click(
-            run_evals_from_ui,
-            inputs=[
-                selected_models,
-                eval_limit,
-                block_unsafe_inputs,
-                use_judge,
-                eval_temperature,
-                eval_max_tokens,
-            ],
-            outputs=[eval_status, summary_table, detail_table, risk_summary],
+@cl.on_message
+async def on_message(message: cl.Message) -> None:
+    settings = get_settings()
+    assistant = build_assistant(settings)
+    response_message = cl.Message(content="")
+    await response_message.send()
+
+    result = await cl.make_async(assistant.respond)(
+        message.content,
+        temperature=float(settings["temperature"]),
+        max_tokens=int(settings["max_tokens"]),
+    )
+
+    response_message.content = result.response
+    response_message.elements = [
+        cl.Text(
+            name="Request trace",
+            content=format_trace(result),
+            display="side",
         )
-        load_eval.click(
-            load_saved_results,
-            outputs=[eval_status, summary_table, detail_table, risk_summary],
+    ]
+    response_message.actions = action_bar()
+    await response_message.update()
+
+
+@cl.action_callback("reset_memory")
+async def reset_memory(action: cl.Action) -> None:
+    get_memory().reset()
+    if hasattr(action, "remove"):
+        await action.remove()
+    await cl.Message(content="Conversation memory cleared.", actions=action_bar()).send()
+
+
+@cl.action_callback("run_smoke_eval")
+async def run_smoke_eval(action: cl.Action) -> None:
+    if hasattr(action, "remove"):
+        await action.remove()
+
+    settings = get_settings()
+    status = cl.Message(content=f"Running a 5-prompt eval for **{settings['assistant']}**...")
+    await status.send()
+
+    try:
+        df = await cl.make_async(run_evaluation)(
+            model_labels=[settings["assistant"]],
+            output_path=RESULTS_PATH,
+            limit=5,
+            temperature=float(settings["temperature"]),
+            max_tokens=int(settings["max_tokens"]),
+            block_unsafe_inputs=bool(settings["block_unsafe_inputs"]),
+            use_judge=False,
         )
-        make_report.click(
-            generate_report_from_ui,
-            outputs=[eval_status, report_file],
-        )
+    except Exception as exc:
+        status.content = f"Evaluation failed: `{exc}`"
+        await status.update()
+        return
 
-    return demo
+    status.content = (
+        f"Smoke eval complete. Wrote `{len(df)}` rows to `{RESULTS_PATH}`.\n\n"
+        f"{render_summary_table(df)}"
+    )
+    status.elements = [
+        cl.File(name="eval_results.csv", path=str(RESULTS_PATH), display="inline")
+    ]
+    status.actions = action_bar()
+    await status.update()
 
 
-def main() -> None:
-    demo = build_app()
-    demo.launch()
+@cl.action_callback("generate_report")
+async def generate_report_action(action: cl.Action) -> None:
+    if hasattr(action, "remove"):
+        await action.remove()
 
+    if not RESULTS_PATH.exists():
+        await cl.Message(
+            content="No saved eval results found yet. Run the smoke eval or CLI eval first.",
+            actions=action_bar(),
+        ).send()
+        return
 
-if __name__ == "__main__":
-    main()
+    try:
+        output = await cl.make_async(generate_report)(RESULTS_PATH, REPORT_PATH)
+    except Exception as exc:
+        await cl.Message(content=f"Report generation failed: `{exc}`", actions=action_bar()).send()
+        return
+
+    await cl.Message(
+        content=f"Generated `{output}`.",
+        elements=[cl.File(name="evaluation_report.pdf", path=str(output), display="inline")],
+        actions=action_bar(),
+    ).send()

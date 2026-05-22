@@ -1,7 +1,6 @@
 ---
 title: AI Assistant Risk Evaluation Workbench
-sdk: gradio
-app_file: app.py
+sdk: docker
 pinned: false
 ---
 
@@ -27,12 +26,12 @@ The goal is to simulate how an AI vendor's assistant could be evaluated before e
 - Custom eval suite across factual, hallucination-trap, jailbreak, harmful, bias, privacy, and business-risk prompts.
 - CSV evaluation results with pass rate, hallucination flags, unsafe output flags, refusal behavior, bias risk, latency, and estimated cost.
 - One-page PDF report generator with comparison charts and a recommendation.
-- Gradio UI suitable for Hugging Face Spaces deployment.
+- Chainlit chat interface for a polished assistant demo.
 
 ## Architecture
 
 ```txt
-Gradio UI
+Chainlit UI
   -> RiskAwareAssistant
       -> SlidingWindowMemory
       -> Guardrails
@@ -73,14 +72,15 @@ OSS_MODEL_ID=Qwen/Qwen2.5-0.5B-Instruct
 ## Run The App
 
 ```bash
-python app.py
+chainlit run app.py
 ```
 
 The app exposes:
 
-- `Chat`: compare the assistants interactively.
-- `Evaluation`: run the prompt suite and generate results.
-- `Risk Summary`: view the model risk summary card.
+- Assistant selector for OSS vs frontier models.
+- Temperature, max-token, and guardrail settings.
+- Side-panel request traces with latency and safety metadata.
+- Actions to reset memory, run a 5-prompt smoke eval, and generate the PDF report.
 
 ## Run Evals From CLI
 
@@ -147,7 +147,7 @@ For the final report, run the eval suite after deployment and use the measured `
 
 ## Hugging Face Spaces Deployment
 
-1. Create a new Hugging Face Space with `Gradio`.
+1. Create a new Hugging Face Space with `Docker`.
 2. Push this repository to the Space.
 3. Set Space secrets for any optional API keys:
    - `OPENAI_API_KEY`
