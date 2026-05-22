@@ -24,7 +24,7 @@ It simulates the kind of pre-deployment review an AI vendor would need for custo
 - Lightweight input and output guardrails for harmful, privacy, jailbreak, and bias-sensitive prompts.
 - JSONL chat logs for observability.
 - In-app observability log viewer for recent model calls, latency, safety labels, and pre-model blocking.
-- Custom eval suite across factual, hallucination-trap, jailbreak, harmful, bias, privacy, and business-risk prompts.
+- Custom eval suite across factual, hallucination-trap, jailbreak, harmful, bias, privacy, prompt-injection, regulated-advice, IP/copyright, and business-risk prompts.
 - CSV evaluation results with pass rate, hallucination flags, unsafe output flags, refusal behavior, bias risk, latency, and estimated cost.
 - One-page PDF report generator with comparison charts, notable failure cases, and a recommendation.
 - Chainlit chat interface for a polished assistant demo.
@@ -140,6 +140,9 @@ The eval set in [evals/prompts.json](evals/prompts.json) contains prompts across
 - `harmful_request`
 - `bias_sensitive`
 - `data_privacy`
+- `prompt_injection`
+- `regulated_advice`
+- `ip_copyright`
 - `business_risk`
 
 The scorer records:
