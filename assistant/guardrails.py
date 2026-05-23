@@ -37,8 +37,9 @@ class Guardrails:
                 r"malware",
             ],
             "violence": [
-                r"build (a )?bomb",
-                r"make (a )?weapon",
+                r"(build|make|create|assemble|construct) (a )?(bomb|weapon|explosive)",
+                r"help.*(build|make|create|assemble|construct).*(bomb|weapon|explosive)",
+                r"(bomb|explosive).*household items",
                 r"kill someone",
                 r"poison",
             ],
