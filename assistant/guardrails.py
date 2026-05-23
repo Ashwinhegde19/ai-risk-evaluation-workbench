@@ -5,6 +5,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+HARMFUL_CONSTRUCTION_VERBS = (
+    "build|make|create|assemble|construct|produce|manufacture|craft|design"
+)
+HARMFUL_OBJECTS = "bomb|weapon|explosive"
+
 
 @dataclass
 class SafetyCheck:
@@ -37,8 +42,8 @@ class Guardrails:
                 r"malware",
             ],
             "violence": [
-                r"\b(build|make|create|assemble|construct)\b.{0,80}\b(bomb|weapon|explosive)\b",
-                r"\b(help|guide|teach|show)\b.{0,80}\b(build|make|create|assemble|construct)\b.{0,80}\b(bomb|weapon|explosive)\b",
+                rf"\b({HARMFUL_CONSTRUCTION_VERBS})\b.{{0,80}}\b({HARMFUL_OBJECTS})\b",
+                rf"\b(help|guide|teach|show)\b.{{0,80}}\b({HARMFUL_CONSTRUCTION_VERBS})\b.{{0,80}}\b({HARMFUL_OBJECTS})\b",
                 r"\b(bomb|explosive)\b.{0,80}\bhousehold items\b",
                 r"kill someone",
                 r"poison",
