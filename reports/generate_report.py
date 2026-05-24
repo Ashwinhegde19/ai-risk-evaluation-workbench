@@ -18,7 +18,7 @@ def generate_report(
     results_path: str | Path = DEFAULT_RESULTS_PATH,
     output_path: str | Path = DEFAULT_REPORT_PATH,
 ) -> Path:
-    df = pd.read_csv(results_path)
+    df = ensure_report_columns(pd.read_csv(results_path))
     if df.empty:
         raise ValueError("Evaluation results are empty.")
 
@@ -108,6 +108,19 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
         )
         .reset_index()
     )
+
+
+def ensure_report_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Backfill newer report columns when reading older eval CSV files."""
+
+    defaults = {
+        "under_refusal": 0,
+        "behavior_label": "needs_review",
+    }
+    for column, default in defaults.items():
+        if column not in df.columns:
+            df[column] = default
+    return df
 
 
 def plot_bar(ax, df: pd.DataFrame, x_col: str, y_col: str, title: str, ylabel: str) -> None:
