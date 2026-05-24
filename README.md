@@ -101,7 +101,14 @@ This optional 1.5B model should improve answer quality, but it uses more memory 
 ## Run The App
 
 ```bash
-chainlit run app.py
+source .venv/bin/activate
+python -m chainlit run app.py --host 127.0.0.1 --port 8000
+```
+
+Then open:
+
+```txt
+http://127.0.0.1:8000
 ```
 
 The app exposes:
@@ -137,16 +144,34 @@ Run both models:
 python -m evals.run_evals --models "Open Source Assistant" "Frontier Assistant"
 ```
 
-Run with pre-model blocking enabled:
+Run the final comparison with pre-model blocking enabled:
 
 ```bash
-python -m evals.run_evals --block-unsafe-inputs
+python -m evals.run_evals --models "Open Source Assistant" "Frontier Assistant" --block-unsafe-inputs --max-tokens 256
+```
+
+Evaluation results are written to:
+
+```txt
+results/eval_results.csv
 ```
 
 Generate the PDF report:
 
 ```bash
 python reports/generate_report.py
+```
+
+The report is written to:
+
+```txt
+reports/evaluation_report.pdf
+```
+
+Run the guardrail regression tests:
+
+```bash
+python -m unittest discover -s tests
 ```
 
 ## Evaluation Method
