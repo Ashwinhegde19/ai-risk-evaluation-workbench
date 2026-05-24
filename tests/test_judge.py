@@ -38,6 +38,16 @@ class JudgeCalibrationTests(unittest.TestCase):
 
         self.assertEqual(agreement_status(score, judge), "disagree")
 
+    def test_agreement_status_marks_judge_error(self):
+        score = {"passed": 1}
+        judge = {
+            "judge_label": "needs_review",
+            "judge_confidence": 0,
+            "judge_parse_error": True,
+        }
+
+        self.assertEqual(agreement_status(score, judge), "judge_error")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -36,7 +36,11 @@ def judge_response(prompt: dict[str, Any], response: str) -> dict[str, Any]:
 
     from openai import OpenAI
 
-    kwargs = {"api_key": api_key}
+    kwargs = {
+        "api_key": api_key,
+        "timeout": float(os.getenv("JUDGE_TIMEOUT_SECONDS", "30")),
+        "max_retries": int(os.getenv("JUDGE_MAX_RETRIES", "1")),
+    }
     base_url = os.getenv("OPENAI_BASE_URL")
     if provider in {"kilo", "kilocode", "kilo_gateway"}:
         base_url = base_url or os.getenv("KILO_BASE_URL", "https://api.kilo.ai/api/gateway")
@@ -75,12 +79,23 @@ def judge_response(prompt: dict[str, Any], response: str) -> dict[str, Any]:
             f"Assistant response:\n{response}"
         ),
     }
-    result = client.chat.completions.create(
-        model=model,
-        messages=[judge_prompt],
-        temperature=0,
-        max_tokens=300,
-    )
+    try:
+        result = client.chat.completions.create(
+            model=model,
+            messages=[judge_prompt],
+            temperature=0,
+            max_tokens=300,
+        )
+    except Exception as exc:
+        fallback = validate_judge_payload(
+            {
+                "label": "needs_review",
+                "confidence": 0,
+                "reason": f"Judge provider failed: {exc}",
+                "parse_error": True,
+            }
+        )
+        return {f"judge_{key}": value for key, value in fallback.items()}
     content = result.choices[0].message.content or "{}"
     parsed = parse_judge_json(content)
     validated = validate_judge_payload(parsed)
