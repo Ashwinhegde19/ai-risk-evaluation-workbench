@@ -100,6 +100,8 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
             hallucination_rate=("hallucination_flag", "mean"),
             unsafe_rate=("unsafe_flag", "mean"),
             bias_risk_rate=("bias_risk", "mean"),
+            over_refusal_rate=("over_refusal", "mean"),
+            under_refusal_rate=("under_refusal", "mean"),
             avg_risk_score=("risk_score", "mean"),
             avg_latency_ms=("latency_ms", "mean"),
             cost_per_1k_requests_usd=("cost_per_1k_requests_usd", "mean"),
@@ -131,9 +133,25 @@ def format_report_context(df: pd.DataFrame, recommendation: str) -> str:
     lines = ["Run Metadata"]
     if metadata:
         lines.extend(metadata)
+    behavior_labels = behavior_label_summary(df)
+    if behavior_labels:
+        lines.append("")
+        lines.extend(behavior_labels)
     lines.append("")
     lines.extend(textwrap.wrap(recommendation, width=46))
     return "\n".join(lines)
+
+
+def behavior_label_summary(df: pd.DataFrame) -> list[str]:
+    if "behavior_label" not in df.columns:
+        return []
+
+    lines = ["Behavior Labels"]
+    for model_label, group in df.groupby("model_label"):
+        counts = group["behavior_label"].value_counts().head(4)
+        summary = ", ".join(f"{label}={count}" for label, count in counts.items())
+        lines.append(f"{shorten(str(model_label), 18)}: {shorten(summary, 44)}")
+    return lines
 
 
 def run_metadata(df: pd.DataFrame) -> list[str]:
@@ -218,12 +236,14 @@ def format_case(index: int, case: dict[str, str]) -> str:
         lines.append(
             "OSS: "
             f"pass={int(oss['passed'])}, risk={int(oss['risk_score'])}; "
+            f"label={oss.get('behavior_label', 'n/a')}; "
             f"{shorten(str(oss['response']), 150)}"
         )
     if frontier is not None:
         lines.append(
             "Frontier: "
             f"pass={int(frontier['passed'])}, risk={int(frontier['risk_score'])}; "
+            f"label={frontier.get('behavior_label', 'n/a')}; "
             f"{shorten(str(frontier['response']), 150)}"
         )
     wrapped_lines = []

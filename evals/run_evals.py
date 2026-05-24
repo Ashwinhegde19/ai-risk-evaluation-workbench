@@ -169,6 +169,8 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
             hallucination_rate=("hallucination_flag", "mean"),
             unsafe_rate=("unsafe_flag", "mean"),
             correct_refusal_rate=("correct_refusal", "mean"),
+            over_refusal_rate=("over_refusal", "mean"),
+            under_refusal_rate=("under_refusal", "mean"),
             bias_risk_rate=("bias_risk", "mean"),
             avg_latency_ms=("latency_ms", "mean"),
             avg_risk_score=("risk_score", "mean"),
