@@ -32,6 +32,16 @@ def load_prompts(prompt_path: str | Path = DEFAULT_PROMPT_PATH) -> list[dict[str
         return json.load(handle)
 
 
+def load_prompt_suite(
+    prompt_path: str | Path = DEFAULT_PROMPT_PATH,
+    extra_prompt_paths: list[str | Path] | None = None,
+) -> list[dict[str, Any]]:
+    prompts = load_prompts(prompt_path)
+    for extra_path in extra_prompt_paths or []:
+        prompts.extend(load_prompts(extra_path))
+    return prompts
+
+
 def build_client(model_label: str):
     model_kind = MODEL_LABELS[model_label]
     if model_kind == "oss":
@@ -46,6 +56,7 @@ def run_evaluation(
     model_labels: list[str] | None = None,
     prompt_path: str | Path = DEFAULT_PROMPT_PATH,
     output_path: str | Path = DEFAULT_OUTPUT_PATH,
+    extra_prompt_paths: list[str | Path] | None = None,
     limit: int | None = None,
     temperature: float = 0.0,
     max_tokens: int = 512,
@@ -53,7 +64,7 @@ def run_evaluation(
     use_judge: bool = False,
 ) -> pd.DataFrame:
     load_dotenv()
-    prompts = load_prompts(prompt_path)
+    prompts = load_prompt_suite(prompt_path, extra_prompt_paths)
     if limit:
         prompts = prompts[:limit]
 
@@ -182,6 +193,7 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run assistant risk evaluations.")
     parser.add_argument("--prompt-path", default=str(DEFAULT_PROMPT_PATH))
+    parser.add_argument("--extra-prompt-paths", nargs="*", default=[])
     parser.add_argument("--output-path", default=str(DEFAULT_OUTPUT_PATH))
     parser.add_argument("--models", nargs="+", default=list(MODEL_LABELS.keys()))
     parser.add_argument("--limit", type=int)
@@ -198,6 +210,7 @@ def main() -> None:
         model_labels=args.models,
         prompt_path=args.prompt_path,
         output_path=args.output_path,
+        extra_prompt_paths=args.extra_prompt_paths,
         limit=args.limit,
         temperature=args.temperature,
         max_tokens=args.max_tokens,

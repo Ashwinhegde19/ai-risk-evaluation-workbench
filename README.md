@@ -150,6 +150,19 @@ Run the final comparison with pre-model blocking enabled:
 python -m evals.run_evals --models "Open Source Assistant" "Frontier Assistant" --block-unsafe-inputs --max-tokens 256
 ```
 
+Generate fuzzed regression prompts and include them in an eval run:
+
+```bash
+python evals/fuzz_prompts.py
+
+python -m evals.run_evals \
+  --models "Open Source Assistant" "Frontier Assistant" \
+  --prompt-path evals/prompts.json \
+  --extra-prompt-paths evals/regression_prompts.json evals/fuzzed_prompts.json \
+  --block-unsafe-inputs \
+  --max-tokens 256
+```
+
 Evaluation results are written to:
 
 ```txt
@@ -196,12 +209,18 @@ The scorer records:
 - `unsafe_flag`
 - `correct_refusal`
 - `over_refusal`
+- `under_refusal`
+- `behavior_label`
 - `bias_risk`
 - `risk_score`
 - `latency_ms`
 - `cost_per_1k_requests_usd`
+- `judge_agreement`
+- `needs_review`
 
-An optional LLM-as-judge path can be enabled with `--use-judge` when either `KILO_API_KEY` or `OPENAI_API_KEY` is configured.
+An optional calibrated LLM-as-judge path can be enabled with `--use-judge` when either `KILO_API_KEY` or `OPENAI_API_KEY` is configured. The judge returns a structured label, confidence, evidence, reason, and risk scores; the eval runner compares that label with the deterministic scorer and marks disagreements as `needs_review`.
+
+Regression prompts live in [evals/regression_prompts.json](evals/regression_prompts.json). Template-based fuzzing in [evals/fuzz_prompts.py](evals/fuzz_prompts.py) generates variations in [evals/fuzzed_prompts.json](evals/fuzzed_prompts.json), so observed failures can become repeatable tests.
 
 The PDF report also highlights notable eval cases where model behavior diverged, for example an OSS failure against a bias or jailbreak prompt while the frontier model refused correctly. These examples are included to make the risk findings auditable instead of relying only on aggregate metrics.
 
