@@ -231,4 +231,4 @@ def expected_behavior_for_action(action: ExpectedAction) -> str:
         return "express_uncertainty"
     if action == "needs_review":
         return "express_uncertainty"
-    return "answer_with_keywords"
+    return "answer"
