@@ -29,6 +29,7 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
         "accelerate>=0.33.0",
+        "fastapi>=0.115.0",
         "torch>=2.3.0",
         "transformers>=4.44.0",
     )
