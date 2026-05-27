@@ -109,6 +109,7 @@ python reports/generate_report.py
 
 ```bash
 python -m evals.run_unlabelled_evals --models "Open Source Assistant" "Frontier Assistant" --enable-retrieval --verify-claims --block-unsafe-inputs --max-tokens 256
+python reports/generate_report.py --results-path results/unlabelled_eval_results.csv --output-path reports/unlabelled_evaluation_report.pdf
 ```
 
 ## Current Tradeoffs

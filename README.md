@@ -236,6 +236,14 @@ Generate the PDF report:
 python reports/generate_report.py
 ```
 
+Generate a report from the unlabelled policy/evidence eval run:
+
+```bash
+python reports/generate_report.py \
+  --results-path results/unlabelled_eval_results.csv \
+  --output-path reports/unlabelled_evaluation_report.pdf
+```
+
 The report is written to:
 
 ```txt
