@@ -22,6 +22,7 @@ STOPWORDS = {
     "does",
     "for",
     "from",
+    "has",
     "how",
     "i",
     "in",
@@ -137,10 +138,9 @@ def tokenize(text: str) -> list[str]:
 
 def normalize_token(token: str) -> str:
     token = token.removesuffix(".ai")
+    token = token.strip(".-")
     if token.endswith("ies") and len(token) > 5:
         return f"{token[:-3]}y"
-    if token.endswith("es") and len(token) > 5:
-        return token[:-2]
     if token.endswith("s") and len(token) > 4:
         return token[:-1]
     return token
