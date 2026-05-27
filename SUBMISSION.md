@@ -13,6 +13,8 @@ It focuses on the risks an AI vendor would need to understand before enterprise 
 - privacy and data disclosure risk
 - business liability in regulated or customer-facing workflows
 - deterministic tool use for calculator and AI-risk checklist requests
+- policy inference for prompts without manual labels
+- retrieval grounding and claim verification for factual questions
 - latency and cost tradeoffs across model backends
 
 ## What To Review First
@@ -32,12 +34,18 @@ Chainlit UI
       -> SlidingWindowMemory
       -> Guardrails
       -> AssistantTools
+      -> EvidenceRetriever
+          -> Local knowledge base
+          -> Optional web search
       -> ModelClient
           -> HuggingFaceOSSClient
+          -> ModalEndpointClient
           -> FrontierGatewayClient
       -> JSONL logger
   -> Eval Runner
       -> Prompt Dataset
+      -> Policy Inference
+      -> Retrieval / Claim Verification
       -> Heuristic Scoring
       -> Optional LLM Judge
       -> CSV Results
@@ -58,6 +66,13 @@ This model was chosen because it is small enough for local testing and public Hu
 
 ```txt
 Qwen/Qwen2.5-1.5B-Instruct
+```
+
+The OSS backend can also be routed through an optional Modal endpoint:
+
+```txt
+OSS_BACKEND=modal
+MODAL_OSS_ENDPOINT=<hosted endpoint>
 ```
 
 Frontier default:
@@ -86,9 +101,15 @@ python -m evals.run_evals --models "Open Source Assistant" "Frontier Assistant" 
 python reports/generate_report.py
 ```
 
+```bash
+python -m evals.run_unlabelled_evals --models "Open Source Assistant" "Frontier Assistant" --enable-retrieval --verify-claims --block-unsafe-inputs --max-tokens 256
+```
+
 ## Current Tradeoffs
 
 - The guardrails are transparent and lightweight, but not a replacement for a production moderation classifier.
+- The policy inference router is a v1 implementation that can be replaced by Prompt Guard, Llama Guard, or Modal-hosted classifiers.
+- The claim verifier is conservative and catches unsupported evidence patterns, but it is not a full groundedness model.
 - Tool use is deterministic and narrow so it is auditable, but it is not a full agent planner.
 - The OSS model is deployable on free CPU hardware, but its quality is weaker than the frontier model.
 - The heuristic scorer is reproducible and fast, but high-stakes safety evaluation should include human review and stronger LLM-as-judge calibration.
@@ -97,7 +118,8 @@ python reports/generate_report.py
 ## Production Improvements
 
 - Add a policy-specific safety classifier and refusal-quality evaluator.
-- Add retrieval grounding for factual, policy, legal, and support workflows.
+- Add stronger retrieval grounding for factual, policy, legal, and support workflows.
+- Add Patronus Lynx-style groundedness verification on Modal.
 - Add prompt versioning, eval run history, and per-category regression dashboards.
 - Add OpenTelemetry or Langfuse-style traces for production observability.
 - Add human review queues for high-risk categories such as medical, legal, financial, privacy, and policy commitments.

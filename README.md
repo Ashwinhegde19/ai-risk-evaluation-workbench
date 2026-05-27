@@ -19,7 +19,7 @@ It simulates the kind of pre-deployment review an AI vendor would need for custo
 
 | Assistant | Backend | Default model |
 |---|---|---|
-| Open Source Assistant | Hugging Face Transformers | `Qwen/Qwen2.5-0.5B-Instruct` |
+| Open Source Assistant | Hugging Face Transformers locally, or optional Modal endpoint | `Qwen/Qwen2.5-0.5B-Instruct` locally |
 | Frontier Assistant | Kilo Gateway / OpenAI-compatible API | `deepseek/deepseek-v4-flash` |
 
 ## Features
@@ -34,6 +34,11 @@ It simulates the kind of pre-deployment review an AI vendor would need for custo
 - CSV evaluation results with pass rate, hallucination flags, unsafe output flags, refusal behavior, bias risk, latency, and estimated cost.
 - One-page PDF report generator with comparison charts, notable failure cases, and a recommendation.
 - Chainlit chat interface for a polished assistant demo.
+- Policy inference for live-style prompts without manual `expected_behavior` labels.
+- Optional local retrieval grounding over trusted documents in `knowledge_base/`.
+- Optional web evidence search through a Tavily-compatible provider.
+- Claim verification metrics for unsupported factual claims and cannot-verify behavior.
+- Optional Modal OSS backend for hosted open-source model inference.
 
 ## Architecture
 
@@ -43,12 +48,18 @@ Chainlit UI
       -> SlidingWindowMemory
       -> Guardrails
       -> AssistantTools
+      -> EvidenceRetriever
+          -> Local knowledge base
+          -> Optional web search
       -> ModelClient
           -> HuggingFaceOSSClient
+          -> ModalEndpointClient
           -> FrontierGatewayClient
       -> JSONL logger
   -> Eval Runner
       -> Prompt Dataset
+      -> Policy Inference
+      -> Retrieval / Claim Verification
       -> Heuristic Scoring
       -> Optional LLM Judge
       -> CSV Results
@@ -87,6 +98,7 @@ FRONTIER_MODEL=gpt-4.1-mini
 For OSS model selection, set:
 
 ```bash
+OSS_BACKEND=local
 OSS_MODEL_ID=Qwen/Qwen2.5-0.5B-Instruct
 ```
 
@@ -97,6 +109,27 @@ OSS_MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct
 ```
 
 This optional 1.5B model should improve answer quality, but it uses more memory and may increase latency. The report should mention which OSS model was used for a given eval run.
+
+For a hosted OSS backend on Modal, set:
+
+```bash
+OSS_BACKEND=modal
+MODAL_OSS_ENDPOINT=https://your-modal-endpoint.example
+MODAL_OSS_MODEL_NAME=Qwen2.5-7B-Instruct-Modal
+MODAL_API_KEY=
+MODAL_TIMEOUT_SECONDS=120
+```
+
+Retrieval and web evidence are optional:
+
+```bash
+ENABLE_RETRIEVAL=true
+ENABLE_WEB_SEARCH=false
+TAVILY_API_KEY=
+TAVILY_BASE_URL=https://api.tavily.com/search
+```
+
+`ENABLE_RETRIEVAL=true` uses local trusted documents first. `ENABLE_WEB_SEARCH=true` allows the evidence router to call the configured web-search provider only when local evidence is missing.
 
 ## Run The App
 
@@ -163,6 +196,24 @@ python -m evals.run_evals \
   --max-tokens 256
 ```
 
+Run live-style unlabelled evals, where `expected_behavior` is inferred instead of manually provided:
+
+```bash
+python -m evals.run_unlabelled_evals \
+  --models "Open Source Assistant" "Frontier Assistant" \
+  --prompt-path evals/unlabelled_prompts.json \
+  --enable-retrieval \
+  --verify-claims \
+  --block-unsafe-inputs \
+  --max-tokens 256
+```
+
+Unlabelled eval results are written to:
+
+```txt
+results/unlabelled_eval_results.csv
+```
+
 Evaluation results are written to:
 
 ```txt
@@ -218,6 +269,17 @@ The scorer records:
 - `judge_agreement`
 - `needs_review`
 
+The unlabelled eval runner additionally records:
+
+- `inferred_request_type`
+- `inferred_expected_action`
+- `policy_inference_confidence`
+- `retrieval_status`
+- `retrieved_context_count`
+- `claim_verification_status`
+- `groundedness_score`
+- `unsupported_numbers`
+
 An optional calibrated LLM-as-judge path can be enabled with `--use-judge` when either `KILO_API_KEY` or `OPENAI_API_KEY` is configured. The judge returns a structured label, confidence, evidence, reason, and risk scores; the eval runner compares that label with the deterministic scorer and marks disagreements as `needs_review`.
 
 Regression prompts live in [evals/regression_prompts.json](evals/regression_prompts.json). Template-based fuzzing in [evals/fuzz_prompts.py](evals/fuzz_prompts.py) generates variations in [evals/fuzzed_prompts.json](evals/fuzzed_prompts.json), so observed failures can become repeatable tests.
@@ -231,6 +293,7 @@ The eval runner records latency per prompt and includes estimated cost per 1,000
 | Deployment | Cost input | Notes |
 |---|---:|---|
 | OSS local / Hugging Face Space | `OSS_COST_PER_1K_REQUESTS_USD` | Defaults to `$0.00`; update this with hosting cost assumptions. |
+| OSS Modal endpoint | `OSS_COST_PER_1K_REQUESTS_USD` | Update this after measuring Modal GPU latency and usage. |
 | Frontier gateway/API | `FRONTIER_COST_PER_1K_REQUESTS_USD` | Defaults to `$0.17`; approximate DeepSeek V4 Flash estimate assuming around 500 input and 500 output tokens per request. |
 
 For the final report, run the eval suite after deployment and use the measured `avg_latency_ms` values from `results/eval_results.csv`.
@@ -251,13 +314,17 @@ For the final report, run the eval suite after deployment and use the measured `
 - The guardrails are intentionally lightweight and rule-based. This makes the behavior transparent, but it is not a replacement for a production moderation system.
 - Tool use is deterministic and intentionally narrow, which keeps it auditable but less flexible than full agentic tool planning.
 - The OSS model is small enough for a public demo, but it will be less capable than larger OSS or frontier models.
-- The heuristic scorer is reproducible and fast, but nuanced safety and hallucination assessment benefits from manual review or LLM-as-judge scoring.
+- The policy inference router is a transparent v1 layer. It is shaped so Prompt Guard, Llama Guard, or Modal-hosted classifiers can replace the internal rules.
+- Retrieval grounding reduces unsupported factual answers, but source coverage is limited by the configured knowledge base and web provider.
+- The claim verifier is conservative and deterministic. It catches unsupported numbers and weak evidence, but it is not a full replacement for Lynx, NLI, or human review.
+- The heuristic scorer is reproducible and fast, but nuanced safety and hallucination assessment benefits from manual review, LLM-as-judge scoring, and groundedness models.
 - Sliding-window memory is simple and predictable, but it does not provide long-term user memory or retrieval.
 
 ## Improvements With More Time
 
-- Add a stronger safety classifier and policy-specific refusal evaluator.
-- Add retrieval grounding for factual/business-policy questions.
+- Replace the v1 policy router with Prompt Guard and Llama Guard classifier endpoints.
+- Deploy Patronus Lynx-style groundedness verification on Modal.
+- Add richer web-source ranking, citation display, and source allowlists.
 - Add prompt versioning, eval run IDs, and comparison across model versions.
 - Add OpenTelemetry or Langfuse-style tracing for production observability.
 - Add a richer dashboard with per-category drilldowns and failed-case review.
