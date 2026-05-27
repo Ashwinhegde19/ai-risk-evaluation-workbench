@@ -115,10 +115,20 @@ For a hosted OSS backend on Modal, set:
 ```bash
 OSS_BACKEND=modal
 MODAL_OSS_ENDPOINT=https://your-modal-endpoint.example
-MODAL_OSS_MODEL_NAME=Qwen2.5-7B-Instruct-Modal
+MODAL_OSS_MODEL_NAME=Qwen/Qwen2.5-3B-Instruct
 MODAL_API_KEY=
 MODAL_TIMEOUT_SECONDS=120
 ```
+
+Deploy the included Modal scaffold:
+
+```bash
+pip install modal
+modal setup
+modal deploy modal_app/oss_endpoint.py
+```
+
+See [modal_app/README.md](modal_app/README.md) for model override and endpoint details.
 
 Retrieval and web evidence are optional:
 

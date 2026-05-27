@@ -75,6 +75,12 @@ OSS_BACKEND=modal
 MODAL_OSS_ENDPOINT=<hosted endpoint>
 ```
 
+The scaffold lives in:
+
+```txt
+modal_app/oss_endpoint.py
+```
+
 Frontier default:
 
 ```txt
