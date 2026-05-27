@@ -132,6 +132,7 @@ def ensure_report_columns(df: pd.DataFrame) -> pd.DataFrame:
         "enable_retrieval": False,
         "verify_claims": False,
         "needs_review": False,
+        "response": "",
     }
     for column, default in defaults.items():
         if column not in df.columns:
@@ -143,6 +144,7 @@ def ensure_report_columns(df: pd.DataFrame) -> pd.DataFrame:
     df["source_covered"] = df["retrieved_context_count"] > 0
     df["unsupported_claim"] = df["claim_verification_status"].eq("unsupported")
     df["cannot_verify"] = df["claim_verification_status"].eq("cannot_verify")
+    df["response"] = df["response"].fillna("")
     return df
 
 

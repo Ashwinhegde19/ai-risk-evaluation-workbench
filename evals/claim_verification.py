@@ -61,6 +61,13 @@ def verify_claims(
 ) -> ClaimVerificationResult:
     """Check whether an answer is supported by retrieved evidence."""
 
+    if not answer or not answer.strip():
+        return ClaimVerificationResult(
+            status="no_answer",
+            groundedness_score=0.0,
+            reason="The assistant returned an empty answer, so no claim could be verified.",
+        )
+
     evidence_items = list(evidence)
     evidence_text, evidence_sources = evidence_to_text(evidence_items)
     if contains_uncertainty(answer):
