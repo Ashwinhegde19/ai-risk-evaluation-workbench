@@ -52,10 +52,10 @@ Final decision
 This plan chooses one concrete stack instead of keeping multiple options open.
 
 ```txt
-Prompt injection detection -> Prompt Guard-style classifier
-Safety/refusal detection -> WildGuard-style classifier
+Prompt injection detection -> Llama Prompt Guard 2 classifier
+Safety/refusal detection -> Llama Guard 3 1B classifier
 Evidence retrieval -> local RAG first, approved web/API tools second
-Hallucination verification -> Patronus Lynx-style groundedness evaluator
+Hallucination verification -> Patronus Lynx-style groundedness evaluator on Modal
 LLM judge -> secondary qualitative signal only
 ```
 
@@ -63,11 +63,56 @@ Why this stack:
 
 ```txt
 Prompt Guard is focused on injection/jailbreak detection.
-WildGuard is a good fit for malicious intent, unsafe responses, and refusal behavior.
+Llama Guard 3 1B is practical for input/output safety classification and hazard categories.
 RAG/web tools provide evidence that the model itself does not know.
 Patronus Lynx-style verification checks whether an answer is supported by retrieved context.
 The LLM judge adds explanation, but does not become the source of truth.
 ```
+
+Optional stronger evaluator:
+
+```txt
+WildGuard can be added as a Modal-backed evaluator for malicious intent, unsafe responses, and refusal quality.
+It is not the default local v1 path because the 7B model is heavier than the Prompt Guard + Llama Guard pair.
+```
+
+## Modal Inference Architecture
+
+Modal is the hosted inference layer for models that should not depend on a developer laptop.
+
+Local application responsibilities:
+
+```txt
+Chainlit UI
+eval runner
+report generation
+observability logs
+retrieval/tool routing
+API clients for hosted evaluators
+```
+
+Modal responsibilities:
+
+```txt
+OSS assistant endpoint
+Prompt Guard endpoint if local CPU inference is too slow
+Llama Guard safety endpoint
+Patronus Lynx groundedness endpoint
+optional WildGuard endpoint
+```
+
+Recommended deployment split:
+
+```txt
+OSS assistant -> Modal GPU
+Prompt Guard 2 -> local CPU by default, Modal fallback
+Llama Guard 3 1B -> Modal GPU by default
+Patronus Lynx 8B -> Modal GPU
+WildGuard 7B -> Modal GPU optional
+Frontier assistant -> hosted API through the existing gateway
+```
+
+This keeps the app usable locally while making the heavier AI risk checks deployable and measurable.
 
 ## Component 1: Policy Inference
 
@@ -92,8 +137,9 @@ Example output:
 Recommended v1 implementation:
 
 ```txt
-Prompt Guard-style classifier for prompt injection
-WildGuard-style classifier for harmful intent, unsafe output, and refusal behavior
+Llama Prompt Guard 2 classifier for prompt injection
+Llama Guard 3 1B classifier for harmful intent and unsafe input/output categories
+Optional WildGuard evaluator for refusal quality and adversarial safety checks
 ```
 
 Fallback:
@@ -173,6 +219,75 @@ If no trusted source supports the answer:
 I cannot verify the exact employee count from the available trusted sources.
 ```
 
+### Web Search Implementation
+
+Web search is a retrieval tool, not a replacement for verification.
+It should only be used when local trusted documents do not cover a factual/current question.
+
+V1 provider options:
+
+```txt
+Tavily / SerpAPI / Brave Search API / Exa
+```
+
+The app should wrap the provider behind one interface:
+
+```txt
+search_web(query, allowed_domains=None, max_results=5) -> list[Evidence]
+```
+
+Evidence schema:
+
+```json
+{
+  "title": "Source title",
+  "url": "https://example.com/page",
+  "snippet": "Short relevant excerpt",
+  "source_type": "official_site",
+  "retrieved_at": "2026-05-28T00:00:00Z",
+  "score": 0.82
+}
+```
+
+Source policy:
+
+```txt
+Prefer official company domains for company facts.
+Prefer government, standards, or primary documentation for regulatory facts.
+Prefer domain APIs for fast-changing data such as finance/weather.
+Do not treat random blogs or scraped snippets as enough evidence for high-risk claims.
+```
+
+Routing example:
+
+```txt
+Question: What is Ollive.ai's exact employee count today?
+Local RAG: no evidence
+Web search: no official source with employee count
+Decision: cannot_verify
+```
+
+Routing example:
+
+```txt
+Question: What does Ollive.ai say it offers?
+Local RAG: no evidence
+Web search: official Ollive page found
+Decision: answer with citation and verify claims against retrieved snippet
+```
+
+The assistant should answer with citations:
+
+```txt
+Based on Ollive's public website, ... [source: https://...]
+```
+
+If the answer cannot be supported by retrieved evidence:
+
+```txt
+I cannot verify this from the available trusted sources.
+```
+
 ## Component 4: Claim Verification
 
 For factual answers, verify whether the answer is supported by evidence.
@@ -180,7 +295,7 @@ For factual answers, verify whether the answer is supported by evidence.
 Chosen v1:
 
 ```txt
-Patronus Lynx-style groundedness evaluation
+Patronus Lynx-style groundedness evaluation hosted on Modal
 ```
 
 Fallback if a Lynx-style evaluator is unavailable:
@@ -289,8 +404,8 @@ infer_policy(prompt) -> request_type, expected_action, confidence, reason
 Use:
 
 ```txt
-Prompt Guard-style injection classifier
-WildGuard-style safety/refusal classifier
+Llama Prompt Guard 2 injection classifier
+Llama Guard 3 1B safety classifier
 confidence thresholds for needs_review or ask_clarification
 ```
 
@@ -334,7 +449,34 @@ Future:
 vector retrieval and richer source ranking
 ```
 
-### Phase 4: Claim Verification
+### Phase 4: Modal Inference Endpoints
+
+Add:
+
+```txt
+modal_app/
+assistant/modal_client.py
+```
+
+Deploy:
+
+```txt
+OSS assistant endpoint
+Llama Guard safety endpoint
+Patronus Lynx groundedness endpoint
+optional WildGuard endpoint
+```
+
+Track:
+
+```txt
+modal_model_name
+modal_gpu_type
+modal_latency_ms
+modal_estimated_cost_usd
+```
+
+### Phase 5: Claim Verification
 
 Add:
 
@@ -354,7 +496,7 @@ Fallback:
 NLI entailment or faithfulness scoring if Lynx-style evaluator is unavailable
 ```
 
-### Phase 5: Report Updates
+### Phase 6: Report Updates
 
 Add report metrics:
 
@@ -365,6 +507,8 @@ unsupported_claim_rate
 cannot_verify_rate
 needs_review_rate
 source_coverage_rate
+hosted_inference_latency_ms
+hosted_inference_estimated_cost_usd
 ```
 
 ## Non-Goals For V1
