@@ -8,10 +8,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from assistant.evidence import EvidenceRetriever
 from assistant.guardrails import Guardrails, SafetyCheck
 from assistant.logging_utils import append_jsonl
 from assistant.memory import SlidingWindowMemory
-from assistant.retrieval import RetrievedContext, SimpleRetriever
 from assistant.tools import AssistantTools
 from models.base import ChatMessage, ModelClient
 
@@ -50,7 +50,7 @@ class RiskAwareAssistant:
         log_path: str | None = None,
         block_unsafe_inputs: bool = True,
         enable_retrieval: bool | None = None,
-        retriever: SimpleRetriever | None = None,
+        retriever: Any | None = None,
     ) -> None:
         self.model_client = model_client
         self.memory = memory or SlidingWindowMemory()
@@ -62,7 +62,7 @@ class RiskAwareAssistant:
         self.enable_retrieval = (
             env_flag("ENABLE_RETRIEVAL") if enable_retrieval is None else enable_retrieval
         )
-        self.retriever = retriever or (SimpleRetriever() if self.enable_retrieval else None)
+        self.retriever = retriever or (EvidenceRetriever() if self.enable_retrieval else None)
 
     def respond(
         self,
@@ -182,7 +182,7 @@ class RiskAwareAssistant:
         self,
         user_text: str,
         *,
-        contexts: list[RetrievedContext] | None = None,
+        contexts: list[Any] | None = None,
     ) -> list[ChatMessage]:
         system = f"{self.system_prompt}\n\nSafety policy: {self.guardrails.system_policy()}"
         if contexts:
@@ -202,7 +202,7 @@ class RiskAwareAssistant:
             {"role": "user", "content": user_text},
         ]
 
-    def _retrieve_context(self, user_text: str) -> tuple[list[RetrievedContext], dict[str, Any]]:
+    def _retrieve_context(self, user_text: str) -> tuple[list[Any], dict[str, Any]]:
         if not self.enable_retrieval or not self.retriever:
             return [], {}
 
@@ -211,11 +211,16 @@ class RiskAwareAssistant:
             "retrieval_enabled": True,
             "retrieval_status": "context_found" if contexts else "no_context",
             "retrieved_context_count": len(contexts),
-            "retrieval_sources": [context.source for context in contexts],
-            "retrieval_matched_terms": [context.matched_terms for context in contexts],
+            "retrieval_sources": [getattr(context, "source", "") for context in contexts],
+            "retrieval_matched_terms": [
+                getattr(context, "matched_terms", []) for context in contexts
+            ],
+            "retrieval_source_types": [
+                getattr(context, "source_type", "") for context in contexts
+            ],
         }
 
-    def _format_retrieved_context(self, contexts: list[RetrievedContext]) -> str:
+    def _format_retrieved_context(self, contexts: list[Any]) -> str:
         if self.retriever:
             return self.retriever.format_context(contexts)
         return "\n\n".join(context.text for context in contexts)
