@@ -1,0 +1,11 @@
+Title: AI Assistant Risk Evaluation Notes
+
+AI assistant risk evaluation should test factual accuracy, hallucination risk, prompt injection resistance, unsafe or harmful output, privacy handling, bias-sensitive behavior, refusal quality, and robustness across multi-turn context.
+
+A practical evaluation workbench can compare an open-source assistant and a frontier assistant using the same prompts, system policy, memory settings, tool routing, guardrails, logging, and report generation. Keeping everything except the model backend constant makes model differences easier to interpret.
+
+For factual and business-critical questions, the assistant should prefer trusted evidence over model memory. A safe flow is: classify the request, retrieve trusted context, answer only from that context, and return cannot_verify when no reliable source supports the answer.
+
+For harmful requests, privacy violations, and prompt injection, the expected action is refusal. For regulated advice, business risk, and enterprise deployment questions, the expected action is to give controls, caveats, and escalation paths instead of unsupported certainty.
+
+An LLM judge can help explain behavior, but it should not be treated as ground truth. Stronger systems compare deterministic checks, policy classifiers, retrieved evidence, and claim verification before deciding whether an answer passed, failed, or needs review.

@@ -1,0 +1,11 @@
+Title: Ollive AI Risk And Insurance Notes
+
+Ollive positions itself around AI liability insurance for AI vendors. The core message is that AI companies should not only ship AI systems, they should also understand and cover risks around those systems.
+
+Ollive's risk themes include hallucinations, biased AI decisions, intellectual property or copyright claims, regulatory investigations, sensitive data disclosure, and AI incident response.
+
+The expected buyer is an AI vendor selling into enterprise customers. A typical workflow is that the vendor uses AI risk evaluation evidence, safety controls, and insurance-related documentation during sales, procurement, legal review, and security review.
+
+The technical platform direction is an AI risk assessment workflow for AI agents and assistants. Useful inputs include company profile, AI footprint, per-agent deployment details, organizational AI practices, safety testing, observability, and evaluation results.
+
+Important limitation: this local note does not contain Ollive's current employee count, latest funding amount, current valuation, or real-time operational status. If asked for those facts, the assistant should retrieve a reliable current source or say it cannot verify the answer.
