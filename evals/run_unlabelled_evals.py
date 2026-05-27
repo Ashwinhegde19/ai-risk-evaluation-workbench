@@ -12,6 +12,8 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from assistant import RiskAwareAssistant, SlidingWindowMemory
+from assistant.retrieval import SimpleRetriever
+from evals.claim_verification import verify_claims as verify_answer_claims
 from evals.policy_inference import inferred_prompt_metadata
 from evals.run_evals import MODEL_LABELS, build_client, estimate_cost_per_1k, summarize
 from evals.scoring import score_response
@@ -53,6 +55,8 @@ def run_unlabelled_evaluation(
     temperature: float = 0.0,
     max_tokens: int = 512,
     block_unsafe_inputs: bool = False,
+    enable_retrieval: bool = False,
+    verify_claims: bool = False,
 ) -> pd.DataFrame:
     """Evaluate prompts by inferring expected behavior instead of reading labels."""
 
@@ -64,6 +68,7 @@ def run_unlabelled_evaluation(
     labels = model_labels or list(MODEL_LABELS.keys())
     rows: list[dict[str, Any]] = []
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    retriever = SimpleRetriever() if enable_retrieval or verify_claims else None
 
     for model_label in labels:
         client = build_client(model_label)
@@ -75,6 +80,8 @@ def run_unlabelled_evaluation(
                 client,
                 memory=SlidingWindowMemory(max_messages=0),
                 block_unsafe_inputs=block_unsafe_inputs,
+                enable_retrieval=enable_retrieval,
+                retriever=retriever,
             )
             result = assistant.respond(
                 prompt_item["prompt"],
@@ -89,6 +96,13 @@ def run_unlabelled_evaluation(
                 result.output_check,
                 result.metadata,
             )
+            evidence = retriever.search(prompt_item["prompt"]) if retriever else []
+            claim_verification = build_claim_verification(
+                question=prompt_item["prompt"],
+                answer=result.response,
+                evidence=evidence,
+                enabled=verify_claims,
+            )
             rows.append(
                 {
                     "run_id": run_id,
@@ -97,6 +111,8 @@ def run_unlabelled_evaluation(
                     "temperature": temperature,
                     "max_tokens": max_tokens,
                     "block_unsafe_inputs": block_unsafe_inputs,
+                    "enable_retrieval": enable_retrieval,
+                    "verify_claims": verify_claims,
                     "model_label": model_label,
                     "model_name": result.model_name,
                     "prompt_id": prompt_metadata["id"],
@@ -115,7 +131,11 @@ def run_unlabelled_evaluation(
                     "output_safety": result.output_check.label,
                     "output_categories": ",".join(result.output_check.categories),
                     "blocked_before_model": bool(result.metadata.get("blocked_before_model")),
+                    "retrieval_status": result.metadata.get("retrieval_status", "not_enabled"),
+                    "retrieved_context_count": result.metadata.get("retrieved_context_count", 0),
+                    "retrieval_sources": "|".join(result.metadata.get("retrieval_sources", [])),
                     "cost_per_1k_requests_usd": estimate_cost_per_1k(model_label),
+                    **claim_verification,
                     **score,
                 }
             )
@@ -127,6 +147,30 @@ def run_unlabelled_evaluation(
     return df
 
 
+def build_claim_verification(
+    *,
+    question: str,
+    answer: str,
+    evidence: list[Any],
+    enabled: bool,
+) -> dict[str, Any]:
+    if not enabled:
+        return {
+            "claim_verification_status": "not_run",
+            "groundedness_score": None,
+            "unsupported_numbers": "",
+            "claim_verification_reason": "",
+        }
+
+    result = verify_answer_claims(question=question, answer=answer, evidence=evidence)
+    return {
+        "claim_verification_status": result.status,
+        "groundedness_score": result.groundedness_score,
+        "unsupported_numbers": ",".join(result.unsupported_numbers),
+        "claim_verification_reason": result.reason,
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run unlabelled policy-inferred evals.")
     parser.add_argument("--prompt-path", default=str(DEFAULT_PROMPT_PATH))
@@ -136,6 +180,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-tokens", type=int, default=512)
     parser.add_argument("--block-unsafe-inputs", action="store_true")
+    parser.add_argument("--enable-retrieval", action="store_true")
+    parser.add_argument("--verify-claims", action="store_true")
     return parser.parse_args()
 
 
@@ -149,6 +195,8 @@ def main() -> None:
         temperature=args.temperature,
         max_tokens=args.max_tokens,
         block_unsafe_inputs=args.block_unsafe_inputs,
+        enable_retrieval=args.enable_retrieval,
+        verify_claims=args.verify_claims,
     )
     print(f"Wrote {len(df)} unlabelled evaluation rows to {args.output_path}")
     print(summarize(df).to_string(index=False))
