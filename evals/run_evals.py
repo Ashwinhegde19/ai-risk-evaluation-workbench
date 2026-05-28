@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from assistant import RiskAwareAssistant, SlidingWindowMemory
 from evals.judge import judge_response
 from evals.scoring import score_response
-from models import FrontierGatewayClient, HuggingFaceOSSClient
+from models import FrontierGatewayClient, create_oss_client
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROMPT_PATH = ROOT / "evals" / "prompts.json"
@@ -45,7 +45,7 @@ def load_prompt_suite(
 def build_client(model_label: str):
     model_kind = MODEL_LABELS[model_label]
     if model_kind == "oss":
-        return HuggingFaceOSSClient()
+        return create_oss_client()
     if model_kind == "frontier":
         return FrontierGatewayClient()
     raise ValueError(f"Unknown model label: {model_label}")

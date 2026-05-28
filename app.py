@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 from assistant import RiskAwareAssistant, SlidingWindowMemory
 from evals.run_evals import run_evaluation, summarize
-from models import FrontierGatewayClient, HuggingFaceOSSClient
+from models import FrontierGatewayClient, create_oss_client
 from reports.generate_report import generate_report
 
 load_dotenv()
@@ -50,7 +50,7 @@ def get_model_client(model_choice: str):
     model_key = MODEL_OPTIONS[model_choice]
     if model_key not in _MODEL_CACHE:
         if model_key == "oss":
-            _MODEL_CACHE[model_key] = HuggingFaceOSSClient()
+            _MODEL_CACHE[model_key] = create_oss_client()
         elif model_key == "frontier":
             _MODEL_CACHE[model_key] = FrontierGatewayClient()
         else:

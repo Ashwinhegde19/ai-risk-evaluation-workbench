@@ -6,6 +6,9 @@ import argparse
 import textwrap
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -92,6 +95,8 @@ def generate_report(
 
 
 def summarize(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["groundedness_score"] = pd.to_numeric(df["groundedness_score"], errors="coerce")
     return (
         df.groupby("model_label")
         .agg(
@@ -102,6 +107,10 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
             bias_risk_rate=("bias_risk", "mean"),
             over_refusal_rate=("over_refusal", "mean"),
             under_refusal_rate=("under_refusal", "mean"),
+            source_coverage_rate=("source_covered", "mean"),
+            unsupported_claim_rate=("unsupported_claim", "mean"),
+            cannot_verify_rate=("cannot_verify", "mean"),
+            avg_groundedness_score=("groundedness_score", "mean"),
             avg_risk_score=("risk_score", "mean"),
             avg_latency_ms=("latency_ms", "mean"),
             cost_per_1k_requests_usd=("cost_per_1k_requests_usd", "mean"),
@@ -116,10 +125,26 @@ def ensure_report_columns(df: pd.DataFrame) -> pd.DataFrame:
     defaults = {
         "under_refusal": 0,
         "behavior_label": "needs_review",
+        "retrieved_context_count": 0,
+        "retrieval_status": "not_enabled",
+        "claim_verification_status": "not_run",
+        "groundedness_score": None,
+        "enable_retrieval": False,
+        "verify_claims": False,
+        "needs_review": False,
+        "response": "",
     }
     for column, default in defaults.items():
         if column not in df.columns:
             df[column] = default
+    df["retrieved_context_count"] = pd.to_numeric(
+        df["retrieved_context_count"],
+        errors="coerce",
+    ).fillna(0)
+    df["source_covered"] = df["retrieved_context_count"] > 0
+    df["unsupported_claim"] = df["claim_verification_status"].eq("unsupported")
+    df["cannot_verify"] = df["claim_verification_status"].eq("cannot_verify")
+    df["response"] = df["response"].fillna("")
     return df
 
 
@@ -150,6 +175,10 @@ def format_report_context(df: pd.DataFrame, recommendation: str) -> str:
     if behavior_labels:
         lines.append("")
         lines.extend(behavior_labels)
+    evidence = evidence_summary(df)
+    if evidence:
+        lines.append("")
+        lines.extend(evidence)
     lines.append("")
     lines.extend(textwrap.wrap(recommendation, width=46))
     return "\n".join(lines)
@@ -175,12 +204,34 @@ def run_metadata(df: pd.DataFrame) -> list[str]:
     models = ", ".join(sorted(str(model) for model in df["model_name"].dropna().unique()))
     return [
         f"Run: {first.get('run_id', 'unknown')}",
+        f"Mode: {first.get('eval_mode', 'labelled')}",
         f"Prompts: {df['prompt_id'].nunique()}",
         f"Temp: {first.get('temperature', 'n/a')}",
         f"Max tokens: {first.get('max_tokens', 'n/a')}",
         f"Blocking: {first.get('block_unsafe_inputs', 'n/a')}",
+        f"Retrieval: {first.get('enable_retrieval', False)}",
+        f"Claim check: {first.get('verify_claims', False)}",
         f"Models: {shorten(models, 54)}",
     ]
+
+
+def evidence_summary(df: pd.DataFrame) -> list[str]:
+    if "claim_verification_status" not in df.columns:
+        return []
+
+    lines = ["Evidence Metrics"]
+    for model_label, group in df.groupby("model_label"):
+        source_coverage = group["source_covered"].mean()
+        unsupported = group["unsupported_claim"].mean()
+        cannot_verify = group["cannot_verify"].mean()
+        groundedness = pd.to_numeric(group["groundedness_score"], errors="coerce").mean()
+        groundedness_text = "n/a" if pd.isna(groundedness) else f"{groundedness:.2f}"
+        lines.append(
+            f"{shorten(str(model_label), 18)}: "
+            f"src={source_coverage:.0%}, unsupported={unsupported:.0%}, "
+            f"cannot_verify={cannot_verify:.0%}, grounded={groundedness_text}"
+        )
+    return lines
 
 
 def render_notable_cases(ax, df: pd.DataFrame) -> None:

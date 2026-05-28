@@ -19,8 +19,24 @@ It simulates the kind of pre-deployment review an AI vendor would need for custo
 
 | Assistant | Backend | Default model |
 |---|---|---|
-| Open Source Assistant | Hugging Face Transformers | `Qwen/Qwen2.5-0.5B-Instruct` |
+| Open Source Assistant | Hugging Face Transformers locally, or optional Modal endpoint | `Qwen/Qwen2.5-0.5B-Instruct` locally |
 | Frontier Assistant | Kilo Gateway / OpenAI-compatible API | `deepseek/deepseek-v4-flash` |
+
+## Current Evaluation Snapshot
+
+The latest committed unlabelled policy/evidence run evaluated 115 prompts against both assistants, producing 230 model rows in total.
+
+| Model | Prompts | Pass rate | Hallucination | Unsafe | Over-refusal | Under-refusal | Avg latency | Avg risk |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Frontier Assistant | 115 | 92.2% | 1.7% | 1.7% | 2.6% | 1.7% | 2572 ms | 2.7 |
+| Open Source Assistant | 115 | 88.7% | 2.6% | 4.3% | 3.5% | 4.3% | 3265 ms | 5.0 |
+
+The generated artifacts are committed for review:
+
+- [results/unlabelled_eval_results.csv](results/unlabelled_eval_results.csv)
+- [reports/unlabelled_evaluation_report.pdf](reports/unlabelled_evaluation_report.pdf)
+
+The result is intentionally not perfect. The expanded prompt suite surfaces real differences between the OSS and frontier assistants instead of reporting a misleading zero-risk smoke test.
 
 ## Features
 
@@ -30,29 +46,62 @@ It simulates the kind of pre-deployment review an AI vendor would need for custo
 - Lightweight input and output guardrails for harmful, privacy, jailbreak, and bias-sensitive prompts.
 - JSONL chat logs for observability.
 - In-app observability log viewer for recent model calls, latency, safety labels, and pre-model blocking.
-- Custom eval suite across factual, hallucination-trap, jailbreak, harmful, bias, privacy, prompt-injection, regulated-advice, IP/copyright, and business-risk prompts.
-- CSV evaluation results with pass rate, hallucination flags, unsafe output flags, refusal behavior, bias risk, latency, and estimated cost.
-- One-page PDF report generator with comparison charts, notable failure cases, and a recommendation.
+- Labelled eval suite across factual, hallucination-trap, jailbreak, harmful, bias, privacy, prompt-injection, regulated-advice, IP/copyright, and business-risk prompts.
+- Live-style unlabelled eval suite that infers policy behavior instead of relying on manually supplied `expected_behavior` labels.
+- CSV evaluation results with pass rate, hallucination flags, unsafe output flags, refusal behavior, bias risk, evidence status, latency, and estimated cost.
+- One-page PDF report generator with comparison charts, evidence metrics, notable failure cases, and a recommendation.
 - Chainlit chat interface for a polished assistant demo.
+- Policy inference for classifying live-style prompts into request type, expected action, confidence, and reason.
+- Optional local retrieval grounding over trusted documents in `knowledge_base/`.
+- Optional web evidence search through a Tavily-compatible provider.
+- Claim verification metrics for unsupported factual claims and cannot-verify behavior.
+- Optional Modal OSS backend for hosted open-source model inference.
 
 ## Architecture
 
-```txt
-Chainlit UI
-  -> RiskAwareAssistant
-      -> SlidingWindowMemory
-      -> Guardrails
-      -> AssistantTools
-      -> ModelClient
-          -> HuggingFaceOSSClient
-          -> FrontierGatewayClient
-      -> JSONL logger
-  -> Eval Runner
-      -> Prompt Dataset
-      -> Heuristic Scoring
-      -> Optional LLM Judge
-      -> CSV Results
-      -> PDF Report
+### Runtime Request Flow
+
+```mermaid
+flowchart TB
+    User["User"] --> UI["Chainlit UI"]
+    UI --> Assistant["RiskAwareAssistant"]
+    Assistant --> Memory["Short-term memory"]
+    Assistant --> InputGuard["Input guardrails"]
+    InputGuard --> ToolRoute{"Tool route?"}
+    ToolRoute --> Tools["Calculator / AI-risk checklist"]
+    ToolRoute --> Retrieval["Evidence retrieval"]
+    Retrieval --> Sources["Local KB / optional web search"]
+    Retrieval --> ModelClient["Model client"]
+    ModelClient --> Backend{"Backend"}
+    Backend --> LocalOSS["Local Hugging Face OSS"]
+    Backend --> ModalOSS["Modal OSS endpoint"]
+    Backend --> Frontier["Frontier gateway"]
+    ModelClient --> OutputGuard["Output guardrails"]
+    Tools --> Response["Response + request trace"]
+    OutputGuard --> Response
+    Response --> Logs["JSONL observability logs"]
+```
+
+### Evaluation And Report Flow
+
+```mermaid
+flowchart TB
+    Prompts["Prompt files"] --> Mode{"Eval mode"}
+    Mode --> Labelled["Labelled evals"]
+    Mode --> Unlabelled["Unlabelled evals"]
+    Unlabelled --> Policy["Policy inference"]
+    Labelled --> Run["Run OSS + Frontier assistants"]
+    Policy --> Run
+    Run --> RetrievalEval["Retrieval + claim verification"]
+    Run --> Scoring["Heuristic scoring"]
+    Run --> Judge["Optional LLM judge"]
+    RetrievalEval --> EvidenceMetrics["Evidence metrics"]
+    Scoring --> RiskMetrics["Behavior labels + risk score"]
+    Judge --> Review["Judge agreement / review flag"]
+    EvidenceMetrics --> CSV["CSV results"]
+    RiskMetrics --> CSV
+    Review --> CSV
+    CSV --> Report["One-page PDF report"]
 ```
 
 ## Setup
@@ -87,6 +136,7 @@ FRONTIER_MODEL=gpt-4.1-mini
 For OSS model selection, set:
 
 ```bash
+OSS_BACKEND=local
 OSS_MODEL_ID=Qwen/Qwen2.5-0.5B-Instruct
 ```
 
@@ -97,6 +147,37 @@ OSS_MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct
 ```
 
 This optional 1.5B model should improve answer quality, but it uses more memory and may increase latency. The report should mention which OSS model was used for a given eval run.
+
+For a hosted OSS backend on Modal, set:
+
+```bash
+OSS_BACKEND=modal
+MODAL_OSS_ENDPOINT=https://your-modal-endpoint.example
+MODAL_OSS_MODEL_NAME=Qwen/Qwen2.5-3B-Instruct
+MODAL_API_KEY=
+MODAL_TIMEOUT_SECONDS=120
+```
+
+Deploy the included Modal scaffold:
+
+```bash
+pip install modal
+modal setup
+modal deploy modal_app/oss_endpoint.py
+```
+
+See [modal_app/README.md](modal_app/README.md) for model override and endpoint details.
+
+Retrieval and web evidence are optional:
+
+```bash
+ENABLE_RETRIEVAL=true
+ENABLE_WEB_SEARCH=false
+TAVILY_API_KEY=
+TAVILY_BASE_URL=https://api.tavily.com/search
+```
+
+`ENABLE_RETRIEVAL=true` uses local trusted documents first. `ENABLE_WEB_SEARCH=true` allows the evidence router to call the configured web-search provider only when local evidence is missing.
 
 ## Run The App
 
@@ -117,7 +198,9 @@ The app exposes:
 - Temperature, max-token, and guardrail settings.
 - Side-panel request traces with latency, safety metadata, and tool-call metadata.
 - Deterministic tool examples: `calculate: (42 * 17) / 3` and `create an AI risk checklist for an insurance assistant`.
-- Actions to reset memory, view recent observability logs, run a 5-prompt smoke eval, and generate the PDF report.
+- Actions to reset memory, view recent observability logs, run a 5-prompt labelled smoke eval, and generate the labelled PDF report.
+
+The in-app smoke eval writes `results/eval_results.csv` and generates `reports/evaluation_report.pdf`. The full policy inference, retrieval, and claim-verification report is generated from the CLI command below and writes `reports/unlabelled_evaluation_report.pdf`.
 
 ## Tool Use
 
@@ -163,6 +246,24 @@ python -m evals.run_evals \
   --max-tokens 256
 ```
 
+Run live-style unlabelled evals, where behavior is inferred by `evals/policy_inference.py` instead of manually supplied in the prompt file:
+
+```bash
+python -m evals.run_unlabelled_evals \
+  --models "Open Source Assistant" "Frontier Assistant" \
+  --prompt-path evals/unlabelled_prompts.json \
+  --enable-retrieval \
+  --verify-claims \
+  --block-unsafe-inputs \
+  --max-tokens 256
+```
+
+Unlabelled eval results are written to:
+
+```txt
+results/unlabelled_eval_results.csv
+```
+
 Evaluation results are written to:
 
 ```txt
@@ -175,10 +276,24 @@ Generate the PDF report:
 python reports/generate_report.py
 ```
 
+Generate a report from the unlabelled policy/evidence eval run:
+
+```bash
+python reports/generate_report.py \
+  --results-path results/unlabelled_eval_results.csv \
+  --output-path reports/unlabelled_evaluation_report.pdf
+```
+
 The report is written to:
 
 ```txt
 reports/evaluation_report.pdf
+```
+
+The unlabelled policy/evidence report is written to:
+
+```txt
+reports/unlabelled_evaluation_report.pdf
 ```
 
 Run the guardrail regression tests:
@@ -218,6 +333,20 @@ The scorer records:
 - `judge_agreement`
 - `needs_review`
 
+The unlabelled eval runner additionally records:
+
+- `inferred_request_type`
+- `inferred_expected_action`
+- `policy_inference_confidence`
+- `policy_inference_reason`
+- `retrieval_status`
+- `retrieved_context_count`
+- `retrieval_sources`
+- `claim_verification_status`
+- `groundedness_score`
+- `unsupported_numbers`
+- `claim_verification_reason`
+
 An optional calibrated LLM-as-judge path can be enabled with `--use-judge` when either `KILO_API_KEY` or `OPENAI_API_KEY` is configured. The judge returns a structured label, confidence, evidence, reason, and risk scores; the eval runner compares that label with the deterministic scorer and marks disagreements as `needs_review`.
 
 Regression prompts live in [evals/regression_prompts.json](evals/regression_prompts.json). Template-based fuzzing in [evals/fuzz_prompts.py](evals/fuzz_prompts.py) generates variations in [evals/fuzzed_prompts.json](evals/fuzzed_prompts.json), so observed failures can become repeatable tests.
@@ -231,9 +360,10 @@ The eval runner records latency per prompt and includes estimated cost per 1,000
 | Deployment | Cost input | Notes |
 |---|---:|---|
 | OSS local / Hugging Face Space | `OSS_COST_PER_1K_REQUESTS_USD` | Defaults to `$0.00`; update this with hosting cost assumptions. |
+| OSS Modal endpoint | `OSS_COST_PER_1K_REQUESTS_USD` | Update this after measuring Modal GPU latency and usage. |
 | Frontier gateway/API | `FRONTIER_COST_PER_1K_REQUESTS_USD` | Defaults to `$0.17`; approximate DeepSeek V4 Flash estimate assuming around 500 input and 500 output tokens per request. |
 
-For the final report, run the eval suite after deployment and use the measured `avg_latency_ms` values from `results/eval_results.csv`.
+For the final report, run the eval suite after deployment and use the measured `avg_latency_ms` values from `results/eval_results.csv` or `results/unlabelled_eval_results.csv`.
 
 ## Hugging Face Spaces Deployment
 
@@ -251,13 +381,17 @@ For the final report, run the eval suite after deployment and use the measured `
 - The guardrails are intentionally lightweight and rule-based. This makes the behavior transparent, but it is not a replacement for a production moderation system.
 - Tool use is deterministic and intentionally narrow, which keeps it auditable but less flexible than full agentic tool planning.
 - The OSS model is small enough for a public demo, but it will be less capable than larger OSS or frontier models.
-- The heuristic scorer is reproducible and fast, but nuanced safety and hallucination assessment benefits from manual review or LLM-as-judge scoring.
+- The policy inference router is a transparent v1 layer. It is shaped so Prompt Guard, Llama Guard, or Modal-hosted classifiers can replace the internal rules.
+- Retrieval grounding reduces unsupported factual answers, but source coverage is limited by the configured knowledge base and web provider.
+- The claim verifier is conservative and deterministic. It catches unsupported numbers and weak evidence, but it is not a full replacement for Lynx, NLI, or human review.
+- The heuristic scorer is reproducible and fast, but nuanced safety and hallucination assessment benefits from manual review, LLM-as-judge scoring, and groundedness models.
 - Sliding-window memory is simple and predictable, but it does not provide long-term user memory or retrieval.
 
 ## Improvements With More Time
 
-- Add a stronger safety classifier and policy-specific refusal evaluator.
-- Add retrieval grounding for factual/business-policy questions.
+- Replace the v1 policy router with Prompt Guard and Llama Guard classifier endpoints.
+- Deploy Patronus Lynx-style groundedness verification on Modal.
+- Add richer web-source ranking, citation display, and source allowlists.
 - Add prompt versioning, eval run IDs, and comparison across model versions.
 - Add OpenTelemetry or Langfuse-style tracing for production observability.
 - Add a richer dashboard with per-category drilldowns and failed-case review.
@@ -267,5 +401,7 @@ For the final report, run the eval suite after deployment and use the measured `
 
 - GitHub repository with complete source code.
 - Public OSS demo link from Hugging Face Spaces.
-- `reports/evaluation_report.pdf` generated from a real eval run.
+- `reports/unlabelled_evaluation_report.pdf` generated from the policy inference, retrieval, and claim-verification eval run.
+- `results/unlabelled_eval_results.csv` with the raw per-prompt evaluation rows.
+- Optional `reports/evaluation_report.pdf` from the labelled smoke or benchmark eval.
 - Optional screenshots or Loom walkthrough.
