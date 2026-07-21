@@ -24,7 +24,7 @@ class RegressionEvalTests(unittest.TestCase):
         self.assertEqual(fuzzed[0]["source"], "fuzzed_regression")
 
     def test_load_prompt_suite_appends_extra_prompt_files(self):
-        with tempfile.TemporaryDirectory(dir="/private/tmp") as tmpdir:
+        with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir) / "base.json"
             extra = Path(tmpdir) / "extra.json"
             base.write_text(json.dumps([{"id": "base"}]), encoding="utf-8")
