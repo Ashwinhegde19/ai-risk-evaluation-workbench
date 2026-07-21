@@ -12,3 +12,7 @@ reports/*.pdf
 reports/*.png
 reports/*.svg
 hf_cache/
+# Shipped demo evaluation artifacts are intentionally tracked despite the
+# rules above, and must also reach the Hugging Face Space mirror.
+!results/unlabelled_eval_results.csv
+!reports/unlabelled_evaluation_report.pdf

@@ -19,6 +19,17 @@ from reports.generate_report import generate_report
 
 load_dotenv()
 
+# Chainlit 2.3.0's OAuth2PasswordBearerWithCookie extends fastapi's SecurityBase
+# without defining the `model` attribute that fastapi>=0.115 requires to build
+# the OpenAPI document. Patching the class avoids HTTP 500 on /openapi.json caused
+# by dependency drift between chainlit and fastapi without pinning fastapi down.
+from fastapi.openapi.models import OAuth2, OAuthFlowPassword, OAuthFlows as _OAuthFlows
+
+_chainlit_auth = importlib.import_module("chainlit.auth")
+_scheme_cls = _chainlit_auth.OAuth2PasswordBearerWithCookie
+if getattr(_scheme_cls, "model", None) is None:
+    _scheme_cls.model = OAuth2(flows=_OAuthFlows(password=OAuthFlowPassword(tokenUrl="/login")))
+
 # Chainlit 2.x can inherit an unset local_steps context in some local runtimes.
 # Giving the shared ContextVar a default keeps callbacks stable without changing app logic.
 _local_steps = ContextVar("local_steps", default=None)

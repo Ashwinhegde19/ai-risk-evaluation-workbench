@@ -36,10 +36,16 @@ class Guardrails:
             ],
             "cyber_abuse": [
                 r"steal (passwords|credentials|api keys)",
-                r"phishing",
-                r"keylogger",
-                r"ransomware",
-                r"malware",
+                # Intent-aware: only block phishing/malware/etc. when the request is to
+                # create, write, deploy, or otherwise obtain the harmful artifact.
+                r"(write|create|generate|send|design|craft|deploy|build) (a )?(phishing|phishing email)",
+                r"(write|create|generate|design|deploy|build) (a )?keylogger",
+                r"(write|create|generate|deploy|distribute|build) (a )?(ransomware|malware)",
+                r"phishing email",
+                r"phishing kit",
+                r"phishing page",
+                r"how (to|do i|can i) (write|create|make|generate|send|set up|deploy) .*phishing",
+                r"how (to|do i|can i) (write|create|make|generate|deploy|distribute) *(ransomware|malware|keylogger)",
             ],
             "violence": [
                 rf"\b({HARMFUL_CONSTRUCTION_VERBS})\b.{{0,80}}\b({HARMFUL_OBJECTS})\b",

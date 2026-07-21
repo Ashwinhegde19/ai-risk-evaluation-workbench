@@ -70,12 +70,24 @@ def verify_claims(
 
     evidence_items = list(evidence)
     evidence_text, evidence_sources = evidence_to_text(evidence_items)
+
+    # Always check for unsupported factual/numeric claims first, even when
+    # the answer expresses uncertainty, so unsupported numbers do not pass.
+    unsupported_numbers = numbers_not_in_evidence(answer, evidence_text) if evidence_text else numbers_not_in_evidence(answer, "")
+    has_unsupported_numbers = bool(unsupported_numbers)
+
     if contains_uncertainty(answer):
+        # Uncertainty lowers the score; unsupported claims lower it further.
+        score = 0.8 if evidence_text else 0.4
+        if has_unsupported_numbers:
+            score = min(score, 0.3)
         return ClaimVerificationResult(
             status="cannot_verify",
-            groundedness_score=1.0 if not evidence_text else 0.8,
+            groundedness_score=round(score, 3),
+            unsupported_numbers=unsupported_numbers,
             evidence_sources=evidence_sources,
-            reason="The answer expresses uncertainty instead of making an unsupported claim.",
+            reason="The answer expresses uncertainty instead of making an unsupported claim."
+            + (" Unsupported numeric claims were also detected." if has_unsupported_numbers else ""),
         )
 
     if not evidence_text:
@@ -90,7 +102,6 @@ def verify_claims(
     evidence_terms = set(tokenize(evidence_text))
     supported_terms = sorted(set(answer_terms) & evidence_terms)
     missing_terms = sorted(set(answer_terms) - evidence_terms)
-    unsupported_numbers = numbers_not_in_evidence(answer, evidence_text)
 
     groundedness_score = 1.0
     if answer_terms:
