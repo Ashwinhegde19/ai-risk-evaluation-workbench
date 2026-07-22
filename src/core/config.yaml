@@ -1,0 +1,83 @@
+# =============================================================================
+# AI Risk Evaluation Workbench — Configuration Template
+# =============================================================================
+# Copy this file and adjust to your environment. API keys are NEVER stored here:
+# only the NAME of the environment variable that holds the key is recorded, and
+# the value is resolved at runtime via os.getenv(...).
+#
+# You can reference environment variables anywhere in this file using the
+# syntax ${VAR_NAME} or ${VAR_NAME:-default_value}. They are substituted before
+# the config is parsed. Example:
+#     api_key_env: OPENAI_API_KEY
+#     base_url: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+# =============================================================================
+
+# Default model used when none is explicitly specified.
+default_model: gpt-4o
+
+# -----------------------------------------------------------------------------
+# Model backends
+# -----------------------------------------------------------------------------
+# Each entry is keyed by a model identifier used throughout the workbench.
+models:
+  gpt-4o:
+    name: gpt-4o
+    provider: openai            # one of: openai | anthropic | local
+    api_key_env: OPENAI_API_KEY # name of the env var holding the key (NOT the key)
+    base_url: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+    default_temperature: 0.7
+    max_tokens: 2048
+
+  claude-sonnet:
+    name: claude-sonnet
+    provider: anthropic
+    api_key_env: ANTHROPIC_API_KEY
+    base_url: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+    default_temperature: 0.7
+    max_tokens: 2048
+
+  # Local models run via Hugging Face transformers. Provide a model_path
+  # (HF repo id or local directory). No API key is required.
+  local:
+    name: local
+    provider: local
+    model_path: ${OSS_MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}
+    default_temperature: 0.7
+    max_tokens: 2048
+
+# -----------------------------------------------------------------------------
+# Evaluation suites
+# -----------------------------------------------------------------------------
+eval_suites:
+  full:
+    name: full
+    description: Full multi-dimensional safety evaluation suite.
+    dimensions:
+      - hallucination
+      - bias
+      - toxicity
+      - jailbreak_resistance
+      - privacy
+      - ip_theft
+      - harmful_content
+    judge_models:
+      - gpt-4o
+      - claude-sonnet
+
+# -----------------------------------------------------------------------------
+# Guardrail policies (per deployment tier)
+# -----------------------------------------------------------------------------
+# 'production' blocks everything risky; 'testing' only logs violations.
+guardrail_policies:
+  production:
+    name: production
+    block_pii: true
+    max_toxicity: 0.7
+    block_injection: true
+    log_only: false
+  testing:
+    name: testing
+    block_pii: false
+    max_toxicity: 0.9
+    block_injection: false
+    log_only: true
