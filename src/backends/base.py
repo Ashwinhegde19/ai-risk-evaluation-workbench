@@ -12,10 +12,16 @@ unit tests can inject mock clients without performing any network I/O.
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Optional
 
 from src.core.config import AppConfig, load_config
+
+# Prefix identifying the self-deployed open-source target. Slugs starting with
+# this (e.g. ``qwen3-8b``) are routed to the Modal L4 endpoint via
+# ``OPEN_MODEL_BASE_URL`` rather than the Kilo gateway.
+OPEN_MODEL_PREFIX = "qwen3-8b"
 
 
 class ModelBackend(ABC):
@@ -376,13 +382,118 @@ def _infer_provider(model_name: str) -> str:
     return "local"
 
 
+def _is_mock_enabled() -> bool:
+    """Return whether mock mode is explicitly enabled via ``MOCK=1``.
+
+    Mock mode is opt-in: only the literal value ``"1"`` enables it, so an unset
+    or empty ``MOCK`` variable means real mode.
+
+    Returns:
+        ``True`` when ``MOCK`` is set to ``"1"``.
+    """
+    return os.getenv("MOCK", "").strip() == "1"
+
+
+def _is_open_model(model_name: str) -> bool:
+    """Return whether a slug refers to the self-deployed open-source model.
+
+    Args:
+        model_name: The model slug (e.g. ``qwen3-8b``).
+
+    Returns:
+        ``True`` when the slug starts with the open-model prefix.
+    """
+    return model_name.lower().startswith(OPEN_MODEL_PREFIX)
+
+
+def _is_frontier_slug(model_name: str) -> bool:
+    """Return whether a slug is a namespaced frontier model.
+
+    Frontier models are addressed as ``provider/model`` (e.g. ``openai/gpt-5``,
+    ``anthropic/claude-opus-4.1``, ``google/gemini-2.5-pro``) and are reached
+    through the Kilo gateway.
+
+    Args:
+        model_name: The model slug.
+
+    Returns:
+        ``True`` when the slug contains a ``provider/`` namespace prefix.
+    """
+    return "/" in model_name
+
+
+def _resolve_open_model(model_name: str) -> ModelBackend:
+    """Build a backend for the open-source model via the Modal L4 endpoint.
+
+    Args:
+        model_name: The open-model slug (e.g. ``qwen3-8b``).
+
+    Returns:
+        An :class:`OpenAIBackend` pointed at ``OPEN_MODEL_BASE_URL``.
+
+    Raises:
+        ValueError: If ``OPEN_MODEL_BASE_URL`` is unset and mock mode is off.
+    """
+    base_url = os.getenv("OPEN_MODEL_BASE_URL")
+    api_key = os.getenv("OPEN_MODEL_API_KEY", "none")
+    if not base_url:
+        if _is_mock_enabled():
+            base_url = "http://mock.local/v1"
+        else:
+            raise ValueError(
+                f"Cannot route open-source model '{model_name}': "
+                "OPEN_MODEL_BASE_URL is not set. Deploy the Modal endpoint "
+                "(modal deploy modal_deploy.py) and set OPEN_MODEL_BASE_URL to "
+                "its /v1 URL, or set MOCK=1 for offline runs."
+            )
+    print(f"[backend] target={model_name} base_url={base_url} mock={'on' if _is_mock_enabled() else 'off'}")
+    return OpenAIBackend(model_name=model_name, api_key=api_key, base_url=base_url)
+
+
+def _resolve_frontier_model(model_name: str) -> ModelBackend:
+    """Build a backend for a namespaced frontier model via the Kilo gateway.
+
+    Args:
+        model_name: The frontier slug (e.g. ``openai/gpt-5``).
+
+    Returns:
+        An :class:`OpenAIBackend` pointed at the Kilo (or OpenAI) gateway.
+
+    Raises:
+        ValueError: If no gateway base URL is configured and mock mode is off.
+    """
+    base_url = os.getenv("KILO_BASE_URL") or os.getenv("OPENAI_BASE_URL")
+    api_key = os.getenv("KILO_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not base_url:
+        if _is_mock_enabled():
+            base_url = "http://mock.local/v1"
+        else:
+            raise ValueError(
+                f"Cannot route frontier model '{model_name}': neither "
+                "KILO_BASE_URL nor OPENAI_BASE_URL is set. Configure the Kilo "
+                "gateway (KILO_BASE_URL + KILO_API_KEY), or set MOCK=1 for "
+                "offline runs."
+            )
+    print(f"[backend] target={model_name} base_url={base_url} mock={'on' if _is_mock_enabled() else 'off'}")
+    return OpenAIBackend(model_name=model_name, api_key=api_key, base_url=base_url)
+
+
 def get_backend(
     model_name: str, config: Optional[AppConfig] = None
 ) -> ModelBackend:
     """Factory that returns a configured :class:`ModelBackend` for a model.
 
+    Routing is decided by the model slug:
+
+    * ``qwen3-8b*`` (open-source) -> Modal L4 endpoint via ``OPEN_MODEL_BASE_URL``.
+    * ``provider/model`` (frontier, e.g. ``openai/gpt-5``) -> Kilo gateway via
+      ``KILO_BASE_URL`` (falling back to ``OPENAI_BASE_URL``).
+    * Otherwise -> the configured provider, or a provider inferred from the name.
+
     The model's API key is resolved from the environment via the configured
-    environment variable name; it is never passed as a literal value.
+    environment variable name; it is never passed as a literal value. When a
+    routed slug has no resolvable base URL and mock mode is off, this raises
+    rather than silently falling back to mock.
 
     Args:
         model_name: The model identifier to instantiate a backend for.
@@ -393,8 +504,16 @@ def get_backend(
         A ready-to-use :class:`ModelBackend` subclass instance.
 
     Raises:
-        ValueError: If the provider is unknown or misconfigured.
+        ValueError: If the provider is unknown or misconfigured, or a routed
+            slug has no base URL in real (non-mock) mode.
     """
+    # Slug-based routing takes precedence so the open-source and frontier lanes
+    # are selected purely by name, independent of config.yaml contents.
+    if _is_open_model(model_name):
+        return _resolve_open_model(model_name)
+    if _is_frontier_slug(model_name):
+        return _resolve_frontier_model(model_name)
+
     cfg = config or load_config()
     model_cfg = cfg.get_model(model_name)
 
@@ -441,4 +560,5 @@ __all__ = [
     "AnthropicBackend",
     "LocalBackend",
     "get_backend",
+    "OPEN_MODEL_PREFIX",
 ]
