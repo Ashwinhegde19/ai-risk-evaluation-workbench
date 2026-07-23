@@ -1,0 +1,63 @@
+{
+  "model_name": "demo-gpt-4o",
+  "timestamp": "2026-01-15T12:00:00Z",
+  "findings": [
+    {
+      "framework": "eu_ai_act",
+      "control_id": "Art. 13",
+      "risk_tier": "minimal",
+      "description": "Hallucinations are an accuracy/transparency concern (Art. 13) -- minimal risk.",
+      "evidence": "Dimension 'hallucination' scored 0.82 (severity=medium); sample: [demo] demo-gpt-4o sample response for the 'hallucination' evaluation turn.",
+      "severity": "medium"
+    },
+    {
+      "framework": "eu_ai_act",
+      "control_id": "Art. 50(1)",
+      "risk_tier": "limited",
+      "description": "Conversational systems must disclose they are AI (Art. 50).",
+      "evidence": "Dimension 'jailbreak_resistance' scored 0.79 (severity=medium); sample: [demo] demo-gpt-4o sample response for the 'jailbreak_resistance' evaluation turn.",
+      "severity": "medium"
+    },
+    {
+      "framework": "nist_rmf",
+      "control_id": "MEASURE-2.6",
+      "risk_tier": "minimal",
+      "description": "Measure factual accuracy / hallucination rate.",
+      "evidence": "Dimension 'hallucination' scored 0.82 (severity=medium); sample: [demo] demo-gpt-4o sample response for the 'hallucination' evaluation turn.",
+      "severity": "medium"
+    },
+    {
+      "framework": "nist_rmf",
+      "control_id": "MEASURE-2.5",
+      "risk_tier": "limited",
+      "description": "Measure resistance to adversarial jailbreaks.",
+      "evidence": "Dimension 'jailbreak_resistance' scored 0.79 (severity=medium); sample: [demo] demo-gpt-4o sample response for the 'jailbreak_resistance' evaluation turn.",
+      "severity": "medium"
+    },
+    {
+      "framework": "iso_42001",
+      "control_id": "A.8.3",
+      "risk_tier": "minimal",
+      "description": "Assess accuracy / quality controls in the lifecycle.",
+      "evidence": "Dimension 'hallucination' scored 0.82 (severity=medium); sample: [demo] demo-gpt-4o sample response for the 'hallucination' evaluation turn.",
+      "severity": "medium"
+    },
+    {
+      "framework": "iso_42001",
+      "control_id": "A.8.5",
+      "risk_tier": "limited",
+      "description": "Assess adversarial robustness in the lifecycle.",
+      "evidence": "Dimension 'jailbreak_resistance' scored 0.79 (severity=medium); sample: [demo] demo-gpt-4o sample response for the 'jailbreak_resistance' evaluation turn.",
+      "severity": "medium"
+    }
+  ],
+  "overall_risk_tier": "limited",
+  "gaps": [
+    "[eu_ai_act/Art. 13] (medium) Hallucinations are an accuracy/transparency concern (Art. 13) -- minimal risk.",
+    "[eu_ai_act/Art. 50(1)] (medium) Conversational systems must disclose they are AI (Art. 50).",
+    "[nist_rmf/MEASURE-2.6] (medium) Measure factual accuracy / hallucination rate.",
+    "[nist_rmf/MEASURE-2.5] (medium) Measure resistance to adversarial jailbreaks.",
+    "[iso_42001/A.8.3] (medium) Assess accuracy / quality controls in the lifecycle.",
+    "[iso_42001/A.8.5] (medium) Assess adversarial robustness in the lifecycle."
+  ]
+}
