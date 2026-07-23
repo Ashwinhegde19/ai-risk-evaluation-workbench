@@ -1,0 +1,13 @@
+{
+  "model": "demo-gpt-4o",
+  "generated_at": "2026-01-15T12:00:00+00:00",
+  "description": "Pre-generated demo artifacts for the AI Risk Evaluation Workbench. Regenerate with: python -m src.demo.generate",
+  "artifacts": {
+    "eval_results": "eval_results.json",
+    "compliance_json": "compliance_report.json",
+    "compliance_pdf": "compliance_report.pdf",
+    "attack_trees": "attack_trees.json",
+    "attack_tree_text": "attack_tree_sample.txt",
+    "attack_tree_dot": "attack_tree_sample.dot"
+  }
+}

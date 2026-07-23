@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-risk-evaluation-workbench"
+version = "0.8.0"
+description = "AI Compliance & Red-Team Platform that evaluates LLMs against EU AI Act, NIST AI RMF, and ISO 42001."
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# Core runtime dependencies: eagerly imported across src/.
+#   - pydantic (v2): src/core/models.py, src/core/config.py, src/judge/*,
+#     src/pipeline/*, src/redteam/agent.py
+#   - PyYAML: src/core/config.py (`import yaml`)
+# Optional SDKs (openai/anthropic), guardrail models (presidio/detoxify), and
+# the dashboard stack are imported lazily and live in optional-dependencies.
+dependencies = [
+    "pydantic>=2",
+    "PyYAML>=6",
+]
+
+[project.optional-dependencies]
+# LLM provider SDKs — imported lazily inside src/backends/base.py methods.
+openai = ["openai>=1.40"]
+anthropic = ["anthropic"]
+# Guardrail models — lazy try/except with regex/lexicon fallbacks.
+#   - presidio-analyzer: src/guardrails/pii.py (`from presidio_analyzer import AnalyzerEngine`)
+#   - detoxify: src/guardrails/toxicity.py (`from detoxify import Detoxify`)
+# Note: presidio-anonymizer is NOT used anywhere in src/.
+guardrails = [
+    "presidio-analyzer",
+    "detoxify",
+]
+# Streamlit dashboard — src/dashboard/app.py imports streamlit eagerly;
+# plotly is imported lazily in components.py; graphviz charts are rendered by
+# Streamlit from DOT strings (the python `graphviz` package is not imported).
+dashboard = [
+    "streamlit>=1.30",
+    "plotly>=5",
+    "graphviz>=0.20",
+]
+dev = [
+    "pytest>=8",
+    "coverage>=7",
+    "pytest-cov>=4",
+]
+all = [
+    "openai>=1.40",
+    "anthropic",
+    "presidio-analyzer",
+    "detoxify",
+    "streamlit>=1.30",
+    "plotly>=5",
+    "graphviz>=0.20",
+    "pytest>=8",
+    "coverage>=7",
+    "pytest-cov>=4",
+]
+
+[project.scripts]
+ai-risk-eval = "src.pipeline.run:main"
+ai-risk-demo = "src.demo.generate:main"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
