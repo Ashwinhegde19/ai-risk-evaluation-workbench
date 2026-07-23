@@ -20,6 +20,7 @@ from src.judge.calibration import (
 from src.judge.ensemble import (
     DEFAULT_DISAGREEMENT_THRESHOLD,
     DEFAULT_JUDGE_MODELS,
+    DEFAULT_MAX_CONCURRENCY,
     EnsembleResult,
     JudgeEnsemble,
 )
@@ -51,6 +52,7 @@ __all__ = [
     # ensemble
     "DEFAULT_JUDGE_MODELS",
     "DEFAULT_DISAGREEMENT_THRESHOLD",
+    "DEFAULT_MAX_CONCURRENCY",
     "EnsembleResult",
     "JudgeEnsemble",
     # calibration
