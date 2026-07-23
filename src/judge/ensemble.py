@@ -12,10 +12,19 @@ The ensemble is provider-agnostic: it resolves each judge model to a
 default :func:`src.backends.base.get_backend`, which reads API keys from
 the environment and never hardcodes them). For deterministic unit testing,
 a ``judge_function`` callable can be injected instead of live backends.
+
+Both synchronous (:meth:`JudgeEnsemble.score`, :meth:`JudgeEnsemble.score_all`)
+and asynchronous (:meth:`JudgeEnsemble.score_async`,
+:meth:`JudgeEnsemble.score_all_async`) entry points are provided. The async
+variants dispatch all judge calls concurrently via :func:`asyncio.gather`;
+sync-only backends are wrapped with :func:`asyncio.to_thread` so they do
+not block the event loop. Both paths share the same aggregation logic and
+produce identical results.
 """
 
 from __future__ import annotations
 
+import asyncio
 import statistics
 from typing import Callable, List, Optional, Union
 
@@ -168,6 +177,39 @@ class JudgeEnsemble:
             return self._judge_function(judge_model, dimension, response, prompt)
         return self._default_judge_function(judge_model, dimension, response, prompt)
 
+    def _aggregate(self, dim_value: str, judge_scores: List[JudgeScore]) -> EnsembleResult:
+        """Aggregate per-judge scores into an :class:`EnsembleResult`.
+
+        Shared by the sync and async scoring paths so both produce identical
+        results: median aggregate, max-min spread, disagreement flag (with an
+        epsilon guard against float error), and median confidence.
+
+        Args:
+            dim_value: The normalized risk-dimension identifier.
+            judge_scores: Per-judge scores, in judge-model order.
+
+        Returns:
+            The aggregated :class:`EnsembleResult`.
+        """
+        scores = [js.score for js in judge_scores]
+        confidences = [js.confidence for js in judge_scores]
+
+        aggregate_score = float(statistics.median(scores))
+        score_spread = float(max(scores) - min(scores))
+        # A small epsilon keeps an exactly-equal spread (subject to float
+        # error, e.g. 0.8 - 0.6 == 0.20000000000000007) from being flagged.
+        disagreement_flag = score_spread > (self.disagreement_threshold + 1e-9)
+        confidence = float(statistics.median(confidences))
+
+        return EnsembleResult(
+            dimension=dim_value,
+            judge_scores=judge_scores,
+            aggregate_score=aggregate_score,
+            score_spread=score_spread,
+            disagreement_flag=disagreement_flag,
+            confidence=confidence,
+        )
+
     def score(
         self,
         dimension: Union[RiskDimension, str],
@@ -175,6 +217,9 @@ class JudgeEnsemble:
         prompt: Optional[str] = None,
     ) -> EnsembleResult:
         """Score ``response`` on ``dimension`` across all judges.
+
+        Judges are invoked sequentially. For concurrent execution use
+        :meth:`score_async`, which produces identical results.
 
         Args:
             dimension: The risk dimension to evaluate.
@@ -197,24 +242,64 @@ class JudgeEnsemble:
             self._invoke_judge(model, dim_value, response, prompt)
             for model in self.judge_models
         ]
-        scores = [js.score for js in judge_scores]
-        confidences = [js.confidence for js in judge_scores]
+        return self._aggregate(dim_value, judge_scores)
 
-        aggregate_score = float(statistics.median(scores))
-        score_spread = float(max(scores) - min(scores))
-        # A small epsilon keeps an exactly-equal spread (subject to float
-        # error, e.g. 0.8 - 0.6 == 0.20000000000000007) from being flagged.
-        disagreement_flag = score_spread > (self.disagreement_threshold + 1e-9)
-        confidence = float(statistics.median(confidences))
+    async def score_async(
+        self,
+        dimension: Union[RiskDimension, str],
+        response: str,
+        prompt: Optional[str] = None,
+    ) -> EnsembleResult:
+        """Score ``response`` on ``dimension`` with all judges running concurrently.
 
-        return EnsembleResult(
-            dimension=dim_value,
-            judge_scores=judge_scores,
-            aggregate_score=aggregate_score,
-            score_spread=score_spread,
-            disagreement_flag=disagreement_flag,
-            confidence=confidence,
+        Every judge call is dispatched via :func:`asyncio.gather`. Sync-only
+        judges (the default backend path and plain-callable ``judge_function``
+        injections) are wrapped with :func:`asyncio.to_thread` so they do not
+        block the event loop; coroutine-function judges are awaited directly.
+        Aggregation is identical to :meth:`score`.
+
+        Args:
+            dimension: The risk dimension to evaluate.
+            response: The target model's response text.
+            prompt: Optional original prompt/context.
+
+        Returns:
+            An :class:`EnsembleResult` identical to what :meth:`score` returns.
+
+        Raises:
+            ValueError: If no judge models are configured.
+        """
+        if not self.judge_models:
+            raise ValueError("JudgeEnsemble requires at least one judge model.")
+        dim_value = dimension.value if isinstance(dimension, RiskDimension) else str(dimension)
+
+        judge_scores = await asyncio.gather(
+            *(self._invoke_judge_async(model, dim_value, response, prompt)
+              for model in self.judge_models)
         )
+        return self._aggregate(dim_value, list(judge_scores))
+
+    async def _invoke_judge_async(
+        self, judge_model: str, dimension: str, response: Optional[str], prompt: Optional[str]
+    ) -> JudgeScore:
+        """Invoke a single judge without blocking the event loop.
+
+        Coroutine-function judges are awaited directly; sync judges (injected
+        callables or live backends) run in a worker thread via
+        :func:`asyncio.to_thread`.
+
+        Args:
+            judge_model: The judging model identifier.
+            dimension: The risk dimension to score.
+            response: The target response text.
+            prompt: Optional original prompt/context.
+
+        Returns:
+            A validated :class:`JudgeScore` from this judge.
+        """
+        if self._judge_function is not None and asyncio.iscoroutinefunction(self._judge_function):
+            return await self._judge_function(judge_model, dimension, response, prompt)
+        return await asyncio.to_thread(self._invoke_judge, judge_model, dimension, response, prompt)
 
     def score_all(
         self,
@@ -223,6 +308,10 @@ class JudgeEnsemble:
         prompt: Optional[str] = None,
     ) -> dict[str, EnsembleResult]:
         """Score ``response`` on every dimension in ``dimensions``.
+
+        Dimensions are processed sequentially; within each dimension judges
+        are also sequential. For full concurrency (all judges across all
+        dimensions dispatched at once) use :meth:`score_all_async`.
 
         Args:
             dimensions: The risk dimensions to evaluate.
@@ -235,6 +324,55 @@ class JudgeEnsemble:
         return {
             (d.value if isinstance(d, RiskDimension) else str(d)): self.score(d, response, prompt)
             for d in dimensions
+        }
+
+    async def score_all_async(
+        self,
+        dimensions: List[Union[RiskDimension, str]],
+        response: str,
+        prompt: Optional[str] = None,
+    ) -> dict[str, EnsembleResult]:
+        """Score ``response`` on every dimension with all judge calls concurrent.
+
+        All ``len(dimensions) * len(judge_models)`` judge calls are dispatched
+        together via :func:`asyncio.gather` -- e.g. 3 judges x 7 dimensions
+        run as 21 concurrent calls rather than 21 serial ones. Sync-only
+        judges run in worker threads via :func:`asyncio.to_thread`.
+        Aggregation is identical to :meth:`score_all`.
+
+        Args:
+            dimensions: The risk dimensions to evaluate.
+            response: The target model's response text.
+            prompt: Optional original prompt/context.
+
+        Returns:
+            A mapping of dimension identifier to its :class:`EnsembleResult`,
+            identical to what :meth:`score_all` returns.
+
+        Raises:
+            ValueError: If no judge models are configured.
+        """
+        if not self.judge_models:
+            raise ValueError("JudgeEnsemble requires at least one judge model.")
+        dim_values = [
+            d.value if isinstance(d, RiskDimension) else str(d) for d in dimensions
+        ]
+
+        # Dispatch every (dimension, judge) pair concurrently, preserving
+        # per-dimension judge order for deterministic aggregation.
+        all_scores = await asyncio.gather(
+            *(
+                self._invoke_judge_async(model, dim_value, response, prompt)
+                for dim_value in dim_values
+                for model in self.judge_models
+            )
+        )
+        return {
+            dim_value: self._aggregate(
+                dim_value,
+                list(all_scores[i * len(self.judge_models):(i + 1) * len(self.judge_models)]),
+            )
+            for i, dim_value in enumerate(dim_values)
         }
 
 
