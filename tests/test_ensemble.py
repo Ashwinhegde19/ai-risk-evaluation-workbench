@@ -132,7 +132,7 @@ class DefaultJudgeIntegrationTests(unittest.TestCase):
 
     def test_default_judge_function_builds_and_parses(self):
         class FakeBackend:
-            def generate(self, prompt, system_prompt=None, temperature=0.7):
+            def generate(self, prompt, system_prompt=None, temperature=0.7, max_tokens=None):
                 # Echo the dimension into the reasoning to prove the prompt
                 # was built, and return a valid rubric JSON payload.
                 return (
@@ -152,6 +152,72 @@ class DefaultJudgeIntegrationTests(unittest.TestCase):
         for js in result.judge_scores:
             self.assertEqual(js.reasoning, "evaluated via rubric")
             self.assertEqual(js.dimension, "harmful_content")
+
+    def test_default_judge_function_retries_then_drops_on_garbage(self):
+        """A backend returning garbage twice: retry once, then drop the vote."""
+        import sys
+        from io import StringIO
+
+        class GarbageBackend:
+            def __init__(self):
+                self.calls = []
+
+            def generate(self, prompt, system_prompt=None, temperature=0.7, max_tokens=None):
+                self.calls.append(max_tokens)
+                return "this is not json at all, no braces anywhere"
+
+        backend = GarbageBackend()
+
+        def factory(model_name):
+            return backend
+
+        ensemble = JudgeEnsemble(judge_models=["m1"], backend_factory=factory)
+
+        old_stderr = sys.stderr
+        sys.stderr = StringIO()
+        try:
+            result = ensemble.score("bias", "resp")
+            stderr_output = sys.stderr.getvalue()
+        finally:
+            sys.stderr = old_stderr
+
+        # Two generate calls: initial + one retry (never more).
+        self.assertEqual(len(backend.calls), 2)
+        # The retry used the higher retry_max_tokens budget.
+        self.assertEqual(backend.calls[0], ensemble.judge_config.max_tokens)
+        self.assertEqual(backend.calls[1], ensemble.judge_config.retry_max_tokens)
+        # The single vote was dropped -> dimension unscored, no exception.
+        self.assertTrue(result.unscored)
+        self.assertEqual(len(result.judge_scores), 0)
+        # A loud warning was logged naming the judge and dimension.
+        self.assertIn("WARNING", stderr_output)
+        self.assertIn("m1", stderr_output)
+        self.assertIn("bias", stderr_output)
+
+    def test_default_judge_function_retry_succeeds(self):
+        """First response is garbage, retry returns valid JSON -> vote kept."""
+
+        class FlakyBackend:
+            def __init__(self):
+                self.calls = 0
+
+            def generate(self, prompt, system_prompt=None, temperature=0.7, max_tokens=None):
+                self.calls += 1
+                if self.calls == 1:
+                    return "garbage, no json"
+                return '{"rating": 5, "confidence": 0.95, "reasoning": "recovered"}'
+
+        def factory(model_name):
+            return FlakyBackend()
+
+        ensemble = JudgeEnsemble(judge_models=["m1"], backend_factory=factory)
+        result = ensemble.score("bias", "resp")
+
+        # Retry recovered the vote: rating 5 -> score 1.0.
+        self.assertFalse(result.unscored)
+        self.assertEqual(len(result.judge_scores), 1)
+        self.assertAlmostEqual(result.aggregate_score, 1.0)
+        self.assertEqual(result.judge_scores[0].reasoning, "recovered")
 
 
 class AsyncEnsembleTests(unittest.TestCase):
@@ -329,6 +395,72 @@ class ParallelBatchTests(unittest.TestCase):
         ensemble.judge_models = []
         with self.assertRaises(ValueError):
             asyncio.run(ensemble.score_responses({"bias": "resp"}))
+
+
+class GracefulDegradationTests(unittest.TestCase):
+    """Verify the ensemble tolerates dropped votes without crashing."""
+
+    def test_one_none_vote_aggregates_remaining(self):
+        """One judge returns None; aggregate over the two valid votes."""
+        def judge(judge_model, dimension, response, prompt):
+            if judge_model == "anthropic/claude-opus-4.1":
+                return None  # Simulate a dropped vote.
+            return JudgeScore(
+                judge_model=judge_model,
+                dimension=dimension,
+                score=0.8 if judge_model == "openai/gpt-5" else 0.6,
+                reasoning="valid",
+                confidence=0.9,
+            )
+
+        result = JudgeEnsemble(judge_function=judge).score("bias", "resp")
+        # Two valid votes: 0.8 and 0.6 → median = mean = 0.7.
+        self.assertAlmostEqual(result.aggregate_score, 0.7)
+        self.assertEqual(len(result.judge_scores), 2)
+        self.assertFalse(result.unscored)
+
+    def test_all_none_votes_marks_unscored(self):
+        """All judges return None; dimension is unscored, no exception."""
+        def judge(judge_model, dimension, response, prompt):
+            return None  # Every vote dropped.
+
+        result = JudgeEnsemble(judge_function=judge).score("bias", "resp")
+        self.assertTrue(result.unscored)
+        self.assertIsNone(result.aggregate_score)
+        self.assertIsNone(result.score_spread)
+        self.assertIsNone(result.confidence)
+        self.assertEqual(len(result.judge_scores), 0)
+
+    def test_judge_exception_is_caught_and_dropped(self):
+        """A judge that raises is caught, vote dropped, run continues."""
+        def judge(judge_model, dimension, response, prompt):
+            if judge_model == "anthropic/claude-opus-4.1":
+                raise RuntimeError("Simulated judge crash")
+            return JudgeScore(
+                judge_model=judge_model,
+                dimension=dimension,
+                score=0.7,
+                reasoning="ok",
+                confidence=0.9,
+            )
+
+        # Capture stderr to verify the warning was logged.
+        import sys
+        from io import StringIO
+        old_stderr = sys.stderr
+        sys.stderr = StringIO()
+        try:
+            result = JudgeEnsemble(judge_function=judge).score("bias", "resp")
+            stderr_output = sys.stderr.getvalue()
+        finally:
+            sys.stderr = old_stderr
+
+        # Two valid votes remain (openai/gpt-5 and google/gemini-2.5-pro).
+        self.assertEqual(len(result.judge_scores), 2)
+        self.assertAlmostEqual(result.aggregate_score, 0.7)
+        # A warning was logged to stderr.
+        self.assertIn("WARNING", stderr_output)
+        self.assertIn("anthropic/claude-opus-4.1", stderr_output)
 
 
 if __name__ == "__main__":

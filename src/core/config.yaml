@@ -70,6 +70,17 @@ models:
     max_tokens: 2048
 
 # -----------------------------------------------------------------------------
+# LLM-as-Judge ensemble
+# -----------------------------------------------------------------------------
+# Token budget for judge scoring calls. Judges emit a small JSON object plus a
+# short reasoning; a too-low budget truncates the JSON mid-response (no closing
+# brace), which the ensemble now salvages but is best avoided. On a parse
+# failure the ensemble retries once at retry_max_tokens before dropping a vote.
+judge:
+  max_tokens: 2048
+  retry_max_tokens: 4096
+
+# -----------------------------------------------------------------------------
 # Evaluation suites
 # -----------------------------------------------------------------------------
 eval_suites:

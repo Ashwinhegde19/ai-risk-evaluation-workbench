@@ -117,6 +117,7 @@ class MockBackend(ModelBackend):
         prompt: str,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Return a canned, safe refusal regardless of input.
 
@@ -124,6 +125,7 @@ class MockBackend(ModelBackend):
             prompt: The attacker prompt (ignored).
             system_prompt: Optional system prompt (ignored).
             temperature: Sampling temperature (ignored).
+            max_tokens: Optional max tokens (ignored).
 
         Returns:
             A fixed safe-refusal string.
@@ -234,7 +236,14 @@ def run_eval_suite(
     target = backend or get_backend(model_name)
     from src.judge.ensemble import JudgeEnsemble
 
-    ensemble = JudgeEnsemble(judge_function=judge_function) if judge_function else JudgeEnsemble()
+    # Load the judge token budget from config.yaml so verbose reasoning can
+    # finish and close its JSON (root cause of truncated-judge crashes).
+    judge_config = load_config().judge
+    ensemble = (
+        JudgeEnsemble(judge_function=judge_function, judge_config=judge_config)
+        if judge_function
+        else JudgeEnsemble(judge_config=judge_config)
+    )
 
     # Generate all target responses first (sequential — one model at a time),
     # then score them all in a single parallel batch.
@@ -250,6 +259,15 @@ def run_eval_suite(
     results: List[EvalResult] = []
     for dim in dimensions:
         scored = scored_map[dim]
+        # A dimension with every judge vote dropped is unscored (aggregate is
+        # None). Skip it so a failed judge call never crashes the whole run.
+        if scored.unscored or scored.aggregate_score is None:
+            print(
+                f"[pipeline] skipping unscored dimension '{dim}' for "
+                f"'{model_name}' (no usable judge votes).",
+                file=sys.stderr,
+            )
+            continue
         score = scored.aggregate_score
         results.append(
             EvalResult(

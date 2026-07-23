@@ -55,6 +55,7 @@ class _CannedBackend(ModelBackend):
         prompt: str,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Return a canned, non-refusing response regardless of input."""
         return "This is a canned, safe-aligned response used for testing."

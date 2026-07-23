@@ -30,11 +30,13 @@ from __future__ import annotations
 
 import asyncio
 import statistics
+import sys
 import time
 from typing import Callable, Dict, List, Optional, Union
 
 from pydantic import Field
 
+from src.core.config import JudgeConfig
 from src.core.models import BaseWorkbenchModel, JudgeScore
 from src.judge.rubrics import (
     RiskDimension,
@@ -63,6 +65,15 @@ DEFAULT_DISAGREEMENT_THRESHOLD: float = 0.20
 #: 3 judges = 21 calls) does not trip gateway rate limits (HTTP 429).
 DEFAULT_MAX_CONCURRENCY: int = 12
 
+#: Appended to the judge prompt on the single retry after an unparseable
+#: response, to coax a short, well-formed JSON object that will not truncate.
+RETRY_NUDGE: str = (
+    "\n\nIMPORTANT: Your previous response could not be parsed as JSON. "
+    "Respond concisely with valid JSON only: a single complete object with "
+    "integer 'rating' (1-5), float 'confidence' (0-1), and 'reasoning' of at "
+    "most 2 sentences. Emit no text outside the JSON object."
+)
+
 #: Signature of an injectable judge: given a judge model id, a dimension, the
 #: response (and optional prompt), return a validated ``JudgeScore``.
 JudgeFunction = Callable[[str, str, Optional[str]], JudgeScore]
@@ -73,29 +84,48 @@ class EnsembleResult(BaseWorkbenchModel):
 
     Attributes:
         dimension: The risk dimension that was scored.
-        judge_scores: The per-judge :class:`JudgeScore` results.
-        aggregate_score: Median of the per-judge normalized scores.
-        score_spread: ``max - min`` of the per-judge scores.
+        judge_scores: The per-judge :class:`JudgeScore` results (votes that
+            could not be parsed are dropped, so this may be shorter than the
+            number of configured judges).
+        aggregate_score: Median of the per-judge normalized scores, or ``None``
+            when no judge returned a usable vote.
+        score_spread: ``max - min`` of the per-judge scores, or ``None`` when
+            fewer than one vote survived.
         disagreement_flag: ``True`` when ``score_spread`` exceeds the
             ensemble's disagreement threshold.
-        confidence: Median of the per-judge confidence values.
+        confidence: Median of the per-judge confidence values, or ``None`` when
+            no vote survived.
+        unscored: ``True`` when every judge vote was dropped (no usable score).
     """
 
     dimension: str = Field(..., description="Risk dimension that was scored.")
     judge_scores: List[JudgeScore] = Field(
         default_factory=list, description="Per-judge scores for this dimension."
     )
-    aggregate_score: float = Field(
-        ..., ge=0.0, le=1.0, description="Median of the per-judge scores."
+    aggregate_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Median of the per-judge scores; None when unscored.",
     )
-    score_spread: float = Field(
-        ..., ge=0.0, le=1.0, description="max(judge scores) - min(judge scores)."
+    score_spread: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="max(judge scores) - min(judge scores); None when unscored.",
     )
     disagreement_flag: bool = Field(
         ..., description="Whether the inter-judge spread exceeded the threshold."
     )
-    confidence: float = Field(
-        ..., ge=0.0, le=1.0, description="Median judge confidence for this dimension."
+    confidence: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Median judge confidence for this dimension; None when unscored.",
+    )
+    unscored: bool = Field(
+        default=False,
+        description="True when every judge vote was dropped (no usable score).",
     )
 
 
@@ -126,6 +156,7 @@ class JudgeEnsemble:
         disagreement_threshold: float = DEFAULT_DISAGREEMENT_THRESHOLD,
         judge_function: Optional[JudgeFunction] = None,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+        judge_config: Optional[JudgeConfig] = None,
     ) -> None:
         """Initialize the ensemble with its judge models and wiring.
 
@@ -142,12 +173,15 @@ class JudgeEnsemble:
                 :data:`JudgeFunction`.
             max_concurrency: Upper bound on concurrently in-flight judge calls
                 in the async paths (see :data:`DEFAULT_MAX_CONCURRENCY`).
+            judge_config: Optional token budget configuration for judge calls.
+                Defaults to :class:`JudgeConfig` (max_tokens=2048, retry=4096).
         """
         self.judge_models: List[str] = (
             list(judge_models) if judge_models else list(DEFAULT_JUDGE_MODELS)
         )
         self.disagreement_threshold: float = disagreement_threshold
         self.max_concurrency: int = max_concurrency
+        self.judge_config: JudgeConfig = judge_config or JudgeConfig()
         self._backend_factory = backend_factory
         self._judge_function = judge_function
         self._backends: dict[str, object] = {}
@@ -176,11 +210,16 @@ class JudgeEnsemble:
 
     def _default_judge_function(
         self, judge_model: str, dimension: str, response: Optional[str], prompt: Optional[str]
-    ) -> JudgeScore:
+    ) -> Optional[JudgeScore]:
         """Score one response using a live judge backend.
 
         Builds the rubric prompt, calls the judge model at temperature 0 for
-        determinism, and parses the structured response.
+        determinism with the configured ``max_tokens``, and parses the
+        structured response. If the response is unparseable (``parsed_ok=False``
+        -- typically a truncated JSON), it retries ONCE at a higher token budget
+        with a "concise, valid JSON only" nudge. If still unparseable, it logs a
+        loud warning and returns ``None`` (dropping this judge's vote) rather
+        than raising, so a single bad judge call never kills the run.
 
         Args:
             judge_model: The judging model identifier.
@@ -189,18 +228,50 @@ class JudgeEnsemble:
             prompt: Optional original prompt/context.
 
         Returns:
-            A validated :class:`JudgeScore` from this judge.
+            A validated :class:`JudgeScore` from this judge, or ``None`` when the
+            vote had to be dropped.
         """
         backend = self._get_backend(judge_model)
         judge_prompt = build_judge_prompt(dimension, str(response or ""), prompt)
-        raw = backend.generate(prompt=judge_prompt, temperature=0.0)
+
+        # First attempt at the configured token budget.
+        raw = backend.generate(
+            prompt=judge_prompt,
+            temperature=0.0,
+            max_tokens=self.judge_config.max_tokens,
+        )
         parsed = parse_judge_response(raw)
-        return rubric_to_judge_score(judge_model, dimension, parsed)
+        if parsed.parsed_ok:
+            return rubric_to_judge_score(judge_model, dimension, parsed)
+
+        # Retry once: higher budget + a concise/valid-JSON nudge.
+        retry_raw = backend.generate(
+            prompt=judge_prompt + RETRY_NUDGE,
+            temperature=0.0,
+            max_tokens=self.judge_config.retry_max_tokens,
+        )
+        retry_parsed = parse_judge_response(retry_raw)
+        if retry_parsed.parsed_ok:
+            return rubric_to_judge_score(judge_model, dimension, retry_parsed)
+
+        # Both attempts failed -- drop the vote with a loud warning.
+        print(
+            f"[judge] WARNING: dropping vote from judge '{judge_model}' on "
+            f"dimension '{dimension}': response was unparseable after retry "
+            f"(truncated/malformed JSON).",
+            file=sys.stderr,
+        )
+        return None
 
     def _invoke_judge(
         self, judge_model: str, dimension: str, response: Optional[str], prompt: Optional[str]
-    ) -> JudgeScore:
+    ) -> Optional[JudgeScore]:
         """Invoke a single judge (injected function or live backend).
+
+        Wraps the call so that any exception raised by an injected judge
+        function is caught and degraded to a dropped vote (``None``) with a loud
+        warning -- a single failing judge never propagates an exception out of
+        this method.
 
         Args:
             judge_model: The judging model identifier.
@@ -209,28 +280,63 @@ class JudgeEnsemble:
             prompt: Optional original prompt/context.
 
         Returns:
-            A validated :class:`JudgeScore` from this judge.
+            A validated :class:`JudgeScore` from this judge, or ``None`` when the
+            vote had to be dropped.
         """
         if self._judge_function is not None:
-            return self._judge_function(judge_model, dimension, response, prompt)
+            try:
+                return self._judge_function(judge_model, dimension, response, prompt)
+            except Exception as exc:  # noqa: BLE001 - degrade, never crash the run
+                print(
+                    f"[judge] WARNING: dropping vote from judge '{judge_model}' on "
+                    f"dimension '{dimension}': judge function raised {exc!r}.",
+                    file=sys.stderr,
+                )
+                return None
         return self._default_judge_function(judge_model, dimension, response, prompt)
 
-    def _aggregate(self, dim_value: str, judge_scores: List[JudgeScore]) -> EnsembleResult:
+    def _aggregate(
+        self, dim_value: str, judge_scores: List[Optional[JudgeScore]]
+    ) -> EnsembleResult:
         """Aggregate per-judge scores into an :class:`EnsembleResult`.
 
         Shared by the sync and async scoring paths so both produce identical
-        results: median aggregate, max-min spread, disagreement flag (with an
-        epsilon guard against float error), and median confidence.
+        results. ``None`` votes (dropped by the retry/degrade path) are skipped;
+        the aggregate, spread, and confidence are computed over whatever votes
+        survived (the median, which for 2 votes is their mean and for 1 vote is
+        that vote). When **no** votes survive, the item is marked ``unscored``
+        with ``None`` aggregate/spread/confidence and the run continues rather
+        than crashing.
 
         Args:
             dim_value: The normalized risk-dimension identifier.
-            judge_scores: Per-judge scores, in judge-model order.
+            judge_scores: Per-judge scores in judge-model order, with ``None``
+                entries for dropped votes.
 
         Returns:
             The aggregated :class:`EnsembleResult`.
         """
-        scores = [js.score for js in judge_scores]
-        confidences = [js.confidence for js in judge_scores]
+        valid = [js for js in judge_scores if js is not None]
+
+        # Zero usable votes: mark unscored and continue (do not raise).
+        if not valid:
+            print(
+                f"[judge] WARNING: dimension '{dim_value}' is UNSCORED -- every "
+                f"judge vote was dropped. Continuing the run.",
+                file=sys.stderr,
+            )
+            return EnsembleResult(
+                dimension=dim_value,
+                judge_scores=[],
+                aggregate_score=None,
+                score_spread=None,
+                disagreement_flag=False,
+                confidence=None,
+                unscored=True,
+            )
+
+        scores = [js.score for js in valid]
+        confidences = [js.confidence for js in valid]
 
         aggregate_score = float(statistics.median(scores))
         score_spread = float(max(scores) - min(scores))
@@ -241,7 +347,7 @@ class JudgeEnsemble:
 
         return EnsembleResult(
             dimension=dim_value,
-            judge_scores=judge_scores,
+            judge_scores=valid,
             aggregate_score=aggregate_score,
             score_spread=score_spread,
             disagreement_flag=disagreement_flag,
@@ -276,7 +382,7 @@ class JudgeEnsemble:
             raise ValueError("JudgeEnsemble requires at least one judge model.")
         dim_value = dimension.value if isinstance(dimension, RiskDimension) else str(dimension)
 
-        judge_scores: List[JudgeScore] = [
+        judge_scores: List[Optional[JudgeScore]] = [
             self._invoke_judge(model, dim_value, response, prompt)
             for model in self.judge_models
         ]
@@ -328,7 +434,7 @@ class JudgeEnsemble:
         response: Optional[str],
         prompt: Optional[str],
         semaphore: Optional[asyncio.Semaphore] = None,
-    ) -> JudgeScore:
+    ) -> Optional[JudgeScore]:
         """Invoke a single judge without blocking the event loop.
 
         Coroutine-function judges are awaited directly; sync judges (injected
@@ -346,7 +452,8 @@ class JudgeEnsemble:
             semaphore: Optional concurrency limiter shared across the batch.
 
         Returns:
-            A validated :class:`JudgeScore` from this judge.
+            A validated :class:`JudgeScore` from this judge, or ``None`` when the
+            vote was dropped.
         """
         if semaphore is not None:
             async with semaphore:
@@ -355,7 +462,7 @@ class JudgeEnsemble:
 
     async def _timed_judge_call(
         self, judge_model: str, dimension: str, response: Optional[str], prompt: Optional[str]
-    ) -> JudgeScore:
+    ) -> Optional[JudgeScore]:
         """Run one judge call and add its latency to the running sum.
 
         Args:
@@ -365,7 +472,8 @@ class JudgeEnsemble:
             prompt: Optional original prompt/context.
 
         Returns:
-            A validated :class:`JudgeScore` from this judge.
+            A validated :class:`JudgeScore` from this judge, or ``None`` when the
+            vote was dropped.
         """
         start = time.monotonic()
         if self._judge_function is not None and asyncio.iscoroutinefunction(self._judge_function):

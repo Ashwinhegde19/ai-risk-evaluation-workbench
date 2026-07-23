@@ -46,6 +46,7 @@ class ModelBackend(ABC):
         prompt: str,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Generate a completion for ``prompt``.
 
@@ -53,6 +54,8 @@ class ModelBackend(ABC):
             prompt: The user prompt to send to the model.
             system_prompt: Optional system instructions.
             temperature: Sampling temperature for this call.
+            max_tokens: Optional per-call override for the maximum tokens to
+                generate. When ``None`` the backend's configured default is used.
 
         Returns:
             The model's response as a string.
@@ -136,6 +139,7 @@ class OpenAIBackend(ModelBackend):
         prompt: str,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Generate a chat completion via the OpenAI API.
 
@@ -143,6 +147,8 @@ class OpenAIBackend(ModelBackend):
             prompt: The user prompt.
             system_prompt: Optional system instructions.
             temperature: Sampling temperature for this call.
+            max_tokens: Optional per-call override for the max tokens to
+                generate; defaults to the backend's configured ``max_tokens``.
 
         Returns:
             The assistant message content as a string.
@@ -156,7 +162,7 @@ class OpenAIBackend(ModelBackend):
             model=self.model_name,
             messages=messages,
             temperature=temperature,
-            max_tokens=self.max_tokens,
+            max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
         )
         if not response.choices:
             raise ValueError(f"API returned no choices for model {self.model_name}")
@@ -239,6 +245,7 @@ class AnthropicBackend(ModelBackend):
         prompt: str,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Generate a message via the Anthropic API.
 
@@ -246,6 +253,8 @@ class AnthropicBackend(ModelBackend):
             prompt: The user prompt.
             system_prompt: Optional system instructions.
             temperature: Sampling temperature for this call.
+            max_tokens: Optional per-call override for the max tokens to
+                generate; defaults to the backend's configured ``max_tokens``.
 
         Returns:
             The assistant message content as a string.
@@ -254,7 +263,7 @@ class AnthropicBackend(ModelBackend):
             "model": self.model_name,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
-            "max_tokens": self.max_tokens,
+            "max_tokens": max_tokens if max_tokens is not None else self.max_tokens,
         }
         if system_prompt:
             kwargs["system"] = system_prompt
@@ -344,6 +353,7 @@ class LocalBackend(ModelBackend):
         prompt: str,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Generate a completion using the local pipeline.
 
@@ -351,6 +361,8 @@ class LocalBackend(ModelBackend):
             prompt: The user prompt.
             system_prompt: Optional system instructions (prefixed to prompt).
             temperature: Sampling temperature (informational for HF pipeline).
+            max_tokens: Optional max tokens to generate (informational for the
+                HF pipeline, which is not token-budgeted per call here).
 
         Returns:
             The generated text as a string.

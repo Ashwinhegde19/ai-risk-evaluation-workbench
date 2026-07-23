@@ -108,6 +108,30 @@ class GuardrailPolicyConfig(BaseModel):
     )
 
 
+class JudgeConfig(BaseModel):
+    """Configuration for the LLM-as-Judge ensemble's token budget.
+
+    The judge models emit a small JSON object plus a short reasoning. A too-low
+    ``max_tokens`` truncates the JSON mid-response (no closing brace), which used
+    to crash the whole run; the budget here is deliberately generous. When a first
+    parse fails, the ensemble retries once at ``retry_max_tokens`` before dropping
+    the vote.
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    max_tokens: int = Field(
+        default=2048,
+        ge=1,
+        description="Max tokens for the initial judge generation call.",
+    )
+    retry_max_tokens: int = Field(
+        default=4096,
+        ge=1,
+        description="Max tokens for the single retry after an unparseable response.",
+    )
+
+
 class AppConfig(BaseModel):
     """Top-level application configuration."""
 
@@ -121,6 +145,10 @@ class AppConfig(BaseModel):
     )
     guardrail_policies: Dict[str, GuardrailPolicyConfig] = Field(
         default_factory=dict, description="Guardrail policies keyed by tier name."
+    )
+    judge: JudgeConfig = Field(
+        default_factory=JudgeConfig,
+        description="Token budget for the LLM-as-Judge ensemble.",
     )
     default_model: Optional[str] = Field(
         default=None, description="Name of the default model."
@@ -287,6 +315,7 @@ __all__ = [
     "ModelConfig",
     "EvalSuiteConfig",
     "GuardrailPolicyConfig",
+    "JudgeConfig",
     "AppConfig",
     "load_config",
     "default_config",

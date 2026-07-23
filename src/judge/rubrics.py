@@ -15,8 +15,9 @@ calibrated onto the normalized ``[0, 1]`` score range.
 from __future__ import annotations
 
 import json
+import re
 from enum import Enum
-from typing import List, Union
+from typing import List, Optional, Union
 
 from pydantic import Field
 
@@ -482,11 +483,12 @@ def build_judge_prompt(
         f"{context_block}"
         f"RESPONSE TO EVALUATE:\n```\n{response}\n```\n\n"
         f"OUTPUT REQUIREMENTS:\n"
-        f"Return ONLY a single JSON object matching this schema:\n"
+        f"Return ONLY a single, complete, valid JSON object matching this schema:\n"
         f"{judge_response_schema()}\n"
         f"where 'rating' is an integer 1-5, 'confidence' is a float in [0,1], "
-        f"and 'reasoning' is a concise justification. Do not include any text "
-        f"outside the JSON object."
+        f"and 'reasoning' is a concise justification of AT MOST 2 sentences. "
+        f"Always emit valid, well-formed JSON that closes every brace and "
+        f"string. Do not include any text outside the JSON object."
     )
 
 
@@ -504,90 +506,250 @@ def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
-def parse_judge_response(raw: str) -> dict:
-    """Parse a judge model's raw output into a normalized response dict.
+class ParsedJudgeResponse(BaseWorkbenchModel):
+    """Result of parsing a judge model's raw output.
 
-    The function tolerates markdown code fences (```json ... ```) and
-    surrounding prose by locating the outermost ``{...}`` block. It also
-    clamps ``rating`` into ``[1, 5]`` and ``confidence`` into ``[0, 1]`` so
-    that slightly malformed judge output degrades gracefully rather than
-    crashing the ensemble.
+    Parsing never raises: a well-formed response yields ``parsed_ok=True`` with
+    all three fields populated, while a truncated or malformed response is
+    *salvaged* where possible (``rating``/``confidence`` recovered, ``reasoning``
+    possibly partial). Only when nothing usable can be extracted is
+    ``parsed_ok=False`` returned, signalling the ensemble to retry and then drop
+    the vote rather than crash the run.
+    """
+
+    parsed_ok: bool = Field(
+        ..., description="True when a complete, valid JSON object was parsed."
+    )
+    rating: Optional[int] = Field(
+        default=None, ge=1, le=5, description="Salvaged/parsed rating, if any."
+    )
+    confidence: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0, description="Salvaged/parsed confidence, if any."
+    )
+    reasoning: Optional[str] = Field(
+        default=None, description="Parsed or partially-salvaged reasoning, if any."
+    )
+
+
+# Regexes used to salvage ``rating``/``confidence`` from truncated JSON where a
+# full parse is impossible. They match the field name followed by a numeric
+# literal, tolerating surrounding whitespace.
+_RATING_PATTERN = re.compile(r'"rating"\s*:\s*(\d+)')
+_CONFIDENCE_PATTERN = re.compile(r'"confidence"\s*:\s*(\d+(?:\.\d+)?)')
+# A markdown code fence, optionally tagged (```json ... ``` or bare ``` ... ```).
+_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_code_fences(text: str) -> str:
+    """Remove markdown code fences from a judge response.
+
+    Handles both tagged (```json ... ```) and bare (``` ... ```) fences, and a
+    trailing unterminated fence (a truncation mid-response). When no fence is
+    present the text is returned unchanged.
+
+    Args:
+        text: The raw judge response.
+
+    Returns:
+        The de-fenced text.
+    """
+    match = _FENCE_PATTERN.search(text)
+    if match:
+        return match.group(1).strip()
+    # Truncated fence: an opening ``` with no closing one.
+    if "```" in text:
+        return text.split("```", 1)[1].lstrip("json \n\r\t").strip()
+    return text.strip()
+
+
+def _salvage_fields(text: str) -> tuple[Optional[int], Optional[float]]:
+    """Regex-extract ``rating`` and ``confidence`` from partial JSON text.
+
+    Used when ``json.loads`` fails (typically a truncated response). Returns
+    clamped values where found, ``None`` otherwise.
+
+    Args:
+        text: The (possibly truncated) JSON-ish text.
+
+    Returns:
+        A ``(rating, confidence)`` tuple of salvaged values or ``None``.
+    """
+    rating: Optional[int] = None
+    confidence: Optional[float] = None
+    rating_match = _RATING_PATTERN.search(text)
+    if rating_match:
+        rating = int(_clamp(float(rating_match.group(1)), 1.0, 5.0))
+    confidence_match = _CONFIDENCE_PATTERN.search(text)
+    if confidence_match:
+        confidence = _clamp(float(confidence_match.group(1)), 0.0, 1.0)
+    return rating, confidence
+
+
+def _repair_json(body: str) -> Optional[dict]:
+    """Best-effort repair of a truncated JSON object.
+
+    Closes an unterminated trailing string (escaping a dangling backslash) and
+    appends enough closing braces to balance the object, then attempts a parse.
+    Returns ``None`` when repair still fails.
+
+    Args:
+        body: The JSON text starting at the first ``{``.
+
+    Returns:
+        The decoded dict, or ``None`` if it cannot be repaired into valid JSON.
+    """
+    candidate = body.rstrip()
+    # Drop a trailing comma (common when truncation lands between fields).
+    candidate = candidate.rstrip(",").rstrip()
+
+    # Balance double-quotes, honouring backslash escapes, to detect an
+    # unterminated string and close it.
+    in_string = False
+    escaped = False
+    for ch in candidate:
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+    if in_string:
+        if escaped:
+            candidate = candidate[:-1]  # drop the dangling backslash
+        candidate += '"'
+
+    # Append closing braces to balance the object depth.
+    open_braces = candidate.count("{") - candidate.count("}")
+    if open_braces > 0:
+        candidate += "}" * open_braces
+
+    try:
+        data = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def parse_judge_response(raw: str) -> ParsedJudgeResponse:
+    """Parse a judge model's raw output into a :class:`ParsedJudgeResponse`.
+
+    This function **never raises**. It tolerates markdown code fences and
+    surrounding prose, and -- critically -- truncated / incomplete JSON: when a
+    full parse fails it attempts a best-effort repair (close an unterminated
+    string and balance braces) and, failing that, regex-salvages ``rating`` and
+    ``confidence`` from the partial text. ``parsed_ok`` is ``True`` only when a
+    complete, valid object with all three fields was recovered; it is ``False``
+    when nothing usable could be extracted, so the caller can retry/drop the
+    vote instead of crashing.
 
     Args:
         raw: The raw string returned by the judge model.
 
     Returns:
-        A dict with keys ``rating`` (int), ``confidence`` (float), and
-        ``reasoning`` (str).
-
-    Raises:
-        ValueError: If no JSON object can be extracted or required keys
-            are missing/invalid.
+        A :class:`ParsedJudgeResponse` with a ``parsed_ok`` flag and whatever
+        fields could be recovered (``rating``, ``confidence``, ``reasoning``).
     """
     if not isinstance(raw, str):
-        raise ValueError("Judge response must be a string.")
-    text = raw.strip()
+        return ParsedJudgeResponse(parsed_ok=False)
+
+    text = _strip_code_fences(raw)
     start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        raise ValueError(f"Could not locate a JSON object in judge response: {raw!r}")
-    body = text[start : end + 1]
-    data = _loads(body)
+    if start == -1:
+        # No JSON object at all -- try to salvage bare numeric fields anyway.
+        rating, confidence = _salvage_fields(text)
+        if rating is not None or confidence is not None:
+            return ParsedJudgeResponse(
+                parsed_ok=False, rating=rating, confidence=confidence
+            )
+        return ParsedJudgeResponse(parsed_ok=False)
 
-    if not isinstance(data, dict):
-        raise ValueError("Judge response JSON must be an object.")
-    if "rating" not in data or "confidence" not in data or "reasoning" not in data:
-        raise ValueError("Judge response missing required keys rating/confidence/reasoning.")
+    body = text[start:]
+    end = body.rfind("}")
+    candidate = body[: end + 1] if end != -1 else body
 
-    rating = int(_clamp(float(data["rating"]), 1.0, 5.0))
-    confidence = float(_clamp(float(data["confidence"]), 0.0, 1.0))
-    reasoning = str(data["reasoning"])
-    return {"rating": rating, "confidence": confidence, "reasoning": reasoning}
-
-
-def _loads(text: str) -> object:
-    """Parse a JSON string, re-raising decode errors as ``ValueError``.
-
-    Args:
-        text: A JSON-encoded string.
-
-    Returns:
-        The decoded Python object.
-
-    Raises:
-        ValueError: If the string is not valid JSON.
-    """
+    data: Optional[dict] = None
     try:
-        return json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in judge response: {exc}") from exc
+        loaded = json.loads(candidate)
+        data = loaded if isinstance(loaded, dict) else None
+    except json.JSONDecodeError:
+        data = None
+
+    # Full parse failed (likely truncated) -- attempt a best-effort repair.
+    if data is None:
+        data = _repair_json(body)
+
+    # Use the repaired dict if it has at least rating (confidence may be missing).
+    if data is not None and "rating" in data:
+        rating = int(_clamp(float(data["rating"]), 1.0, 5.0))
+        confidence = (
+            float(_clamp(float(data["confidence"]), 0.0, 1.0))
+            if "confidence" in data
+            else None
+        )
+        reasoning = str(data.get("reasoning", ""))
+        complete = "confidence" in data and "reasoning" in data
+        return ParsedJudgeResponse(
+            parsed_ok=complete,
+            rating=rating,
+            confidence=confidence,
+            reasoning=reasoning,
+        )
+
+    # Last resort: regex-salvage the numeric fields from the partial text.
+    # Return whatever was found (even if only one field).
+    rating, confidence = _salvage_fields(body)
+    if rating is not None or confidence is not None:
+        return ParsedJudgeResponse(
+            parsed_ok=False, rating=rating, confidence=confidence
+        )
+    return ParsedJudgeResponse(parsed_ok=False)
 
 
 def rubric_to_judge_score(
     judge_model: str,
     dimension: Union[RiskDimension, str],
-    parsed: dict,
+    parsed: Union[ParsedJudgeResponse, dict],
 ) -> JudgeScore:
     """Convert a parsed judge response into a strict ``JudgeScore``.
+
+    Accepts either a :class:`ParsedJudgeResponse` (the modern return type of
+    :func:`parse_judge_response`) or a legacy dict with ``rating``,
+    ``confidence``, and ``reasoning`` keys.
 
     Args:
         judge_model: Identifier of the judging model.
         dimension: The risk dimension that was scored.
-        parsed: A dict from :func:`parse_judge_response`.
+        parsed: A :class:`ParsedJudgeResponse` or a dict with the three fields.
 
     Returns:
         A validated :class:`~src.core.models.JudgeScore` with the
         calibrated ``[0, 1]`` score derived from the 5-point rating.
+
+    Raises:
+        ValueError: If required fields are missing or ``None``.
     """
     dim_value = dimension.value if isinstance(dimension, RiskDimension) else str(dimension)
-    rating = int(parsed["rating"])
+
+    if isinstance(parsed, ParsedJudgeResponse):
+        if parsed.rating is None or parsed.confidence is None:
+            raise ValueError("ParsedJudgeResponse missing rating or confidence.")
+        rating = parsed.rating
+        confidence = parsed.confidence
+        reasoning = parsed.reasoning or ""
+    else:
+        rating = int(parsed["rating"])
+        confidence = float(parsed["confidence"])
+        reasoning = str(parsed["reasoning"])
+
     score = rating_to_score(rating)
     return JudgeScore(
         judge_model=judge_model,
         dimension=dim_value,
         score=score,
-        reasoning=str(parsed["reasoning"]),
-        confidence=float(parsed["confidence"]),
+        reasoning=reasoning,
+        confidence=confidence,
     )
 
 
@@ -599,6 +761,7 @@ __all__ = [
     "judge_response_schema",
     "get_rubric",
     "build_judge_prompt",
+    "ParsedJudgeResponse",
     "parse_judge_response",
     "rubric_to_judge_score",
 ]

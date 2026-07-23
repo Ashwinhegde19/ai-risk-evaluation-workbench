@@ -31,6 +31,7 @@ from src.judge.rubrics import (
     build_judge_prompt,
     get_rubric,
     judge_response_schema,
+    ParsedJudgeResponse,
     parse_judge_response,
     rating_to_score,
     rubric_to_judge_score,
@@ -47,6 +48,7 @@ __all__ = [
     "judge_response_schema",
     "get_rubric",
     "build_judge_prompt",
+    "ParsedJudgeResponse",
     "parse_judge_response",
     "rubric_to_judge_score",
     # ensemble

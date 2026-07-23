@@ -125,41 +125,51 @@ class ParseAndConvertTests(unittest.TestCase):
         parsed = parse_judge_response(
             '{"rating": 4, "confidence": 0.8, "reasoning": "looks fine"}'
         )
-        self.assertEqual(parsed["rating"], 4)
-        self.assertEqual(parsed["confidence"], 0.8)
-        self.assertEqual(parsed["reasoning"], "looks fine")
+        self.assertTrue(parsed.parsed_ok)
+        self.assertEqual(parsed.rating, 4)
+        self.assertEqual(parsed.confidence, 0.8)
+        self.assertEqual(parsed.reasoning, "looks fine")
 
     def test_parse_strips_markdown_fence(self):
         raw = '```json\n{"rating": 2, "confidence": 0.5, "reasoning": "ok"}\n```'
         parsed = parse_judge_response(raw)
-        self.assertEqual(parsed["rating"], 2)
+        self.assertTrue(parsed.parsed_ok)
+        self.assertEqual(parsed.rating, 2)
 
     def test_parse_ignores_surrounding_prose(self):
         raw = 'Here is my evaluation:\n{"rating": 3, "confidence": 0.6, "reasoning": "meh"}\nThanks.'
         parsed = parse_judge_response(raw)
-        self.assertEqual(parsed["rating"], 3)
+        self.assertTrue(parsed.parsed_ok)
+        self.assertEqual(parsed.rating, 3)
 
     def test_parse_clamps_out_of_range_values(self):
         parsed = parse_judge_response(
             '{"rating": 99, "confidence": 5, "reasoning": "x"}'
         )
-        self.assertEqual(parsed["rating"], 5)
-        self.assertEqual(parsed["confidence"], 1.0)
+        self.assertEqual(parsed.rating, 5)
+        self.assertEqual(parsed.confidence, 1.0)
 
     def test_parse_clamps_below_range_values(self):
         parsed = parse_judge_response(
             '{"rating": -3, "confidence": -1, "reasoning": "x"}'
         )
-        self.assertEqual(parsed["rating"], 1)
-        self.assertEqual(parsed["confidence"], 0.0)
+        self.assertEqual(parsed.rating, 1)
+        self.assertEqual(parsed.confidence, 0.0)
 
     def test_parse_rejects_missing_keys(self):
-        with self.assertRaises(ValueError):
-            parse_judge_response('{"rating": 3, "confidence": 0.5}')
+        # No longer raises: a response missing 'reasoning' is salvaged with
+        # parsed_ok=False (rating/confidence recovered) so the run survives.
+        parsed = parse_judge_response('{"rating": 3, "confidence": 0.5}')
+        self.assertFalse(parsed.parsed_ok)
+        self.assertEqual(parsed.rating, 3)
+        self.assertAlmostEqual(parsed.confidence, 0.5)
 
     def test_parse_rejects_non_json(self):
-        with self.assertRaises(ValueError):
-            parse_judge_response("no json here at all")
+        # No longer raises: pure prose yields parsed_ok=False with no fields.
+        parsed = parse_judge_response("no json here at all")
+        self.assertFalse(parsed.parsed_ok)
+        self.assertIsNone(parsed.rating)
+        self.assertIsNone(parsed.confidence)
 
     def test_rubric_to_judge_score_produces_valid_model(self):
         parsed = {"rating": 5, "confidence": 0.9, "reasoning": "excellent"}
@@ -175,6 +185,49 @@ class ParseAndConvertTests(unittest.TestCase):
         parsed = {"rating": 2, "confidence": 0.4, "reasoning": "poor"}
         score = rubric_to_judge_score("claude-sonnet", "toxicity", parsed)
         self.assertAlmostEqual(score.score, 0.25)
+
+
+class SalvageTruncatedResponseTests(unittest.TestCase):
+    """Verify parse_judge_response salvages truncated/malformed judge output."""
+
+    def test_truncated_json_no_closing_brace_salvages_fields(self):
+        # Simulates a judge that hit max_tokens mid-response: no closing brace.
+        raw = '{"rating": 5, "confidence": 1.0, "reasoning": "The overall response is'
+        parsed = parse_judge_response(raw)
+        # Salvaged via repair or regex; rating/confidence recovered.
+        self.assertEqual(parsed.rating, 5)
+        self.assertAlmostEqual(parsed.confidence, 1.0)
+        # parsed_ok may be True (repair succeeded) or False (regex salvage).
+        # Either way, no exception was raised.
+
+    def test_truncated_json_with_fence_salvages_fields(self):
+        # Truncated fence + truncated JSON (the exact bug scenario).
+        raw = '```json\n{"rating":4,"confidence":0.9,"reasoning":"...The overall response is'
+        parsed = parse_judge_response(raw)
+        self.assertEqual(parsed.rating, 4)
+        self.assertAlmostEqual(parsed.confidence, 0.9)
+
+    def test_bare_fence_complete_json_parses(self):
+        # Bare ``` fence (no json tag) with complete JSON.
+        raw = '```\n{"rating": 3, "confidence": 0.7, "reasoning": "ok"}\n```'
+        parsed = parse_judge_response(raw)
+        self.assertTrue(parsed.parsed_ok)
+        self.assertEqual(parsed.rating, 3)
+
+    def test_garbage_returns_parsed_ok_false_no_raise(self):
+        # Pure garbage: no JSON, no salvageable fields.
+        parsed = parse_judge_response("This is not JSON at all.")
+        self.assertFalse(parsed.parsed_ok)
+        self.assertIsNone(parsed.rating)
+        self.assertIsNone(parsed.confidence)
+
+    def test_partial_salvage_rating_only(self):
+        # Only rating present, no confidence → parsed_ok=False but rating salvaged.
+        raw = '{"rating": 2, "reasoning": "incomplete'
+        parsed = parse_judge_response(raw)
+        # Repair may succeed (parsed_ok=True) or fail (parsed_ok=False).
+        # Either way, rating should be recovered.
+        self.assertEqual(parsed.rating, 2)
 
 
 if __name__ == "__main__":
