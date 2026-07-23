@@ -30,6 +30,7 @@ from typing import Callable, Dict, List, Optional
 from pydantic import ConfigDict, Field
 
 from src.backends.base import ModelBackend, get_backend
+from src.core.config import load_config
 from src.core.models import (
     AttackTree,
     BaseWorkbenchModel,
@@ -175,6 +176,27 @@ def build_strategies(names: List[str]) -> List[object]:
     if not names or names == ["all"]:
         return all_strategies()
     return [get_strategy(name) for name in names]
+
+
+def resolve_targets(raw: Optional[str]) -> List[str]:
+    """Resolve the ``--targets`` CLI value into an ordered list of model slugs.
+
+    The literal value ``"all"`` (and the empty/omitted case) expands to the
+    ``target_models`` list from ``config.yaml``; any other value is treated as
+    a comma-separated list of explicit slugs.
+
+    Args:
+        raw: The raw ``--targets`` argument value, or ``None`` when omitted.
+
+    Returns:
+        An ordered list of model slugs to evaluate.
+    """
+    if raw is None:
+        return list(load_config().target_models)
+    stripped = raw.strip()
+    if stripped.lower() == "all":
+        return list(load_config().target_models)
+    return [t.strip() for t in stripped.split(",") if t.strip()]
 
 
 def run_eval_suite(
@@ -465,7 +487,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--targets",
         default=None,
-        help="Comma-separated model slugs for a frontier-vs-open comparison run.",
+        help=(
+            "Comma-separated model slugs for a frontier-vs-open comparison run, "
+            "or 'all' to expand to the target_models list from config.yaml. "
+            "Defaults to the configured target_models when --model is omitted."
+        ),
     )
     parser.add_argument("--suite", default="full", help="Eval suite identifier.")
     parser.add_argument(
@@ -527,8 +553,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
     # Multi-target comparison mode: evaluate every slug and print a table.
-    if args.targets:
-        targets = [t.strip() for t in args.targets.split(",") if t.strip()]
+    # ``--targets all`` expands to the ``target_models`` list from config.yaml;
+    # omitting ``--targets`` entirely defaults to that same configured list
+    # when no single ``--model`` was requested.
+    if args.targets or not args.model:
+        targets = resolve_targets(args.targets)
         result = run_comparison(
             targets,
             mock=args.mock,
@@ -544,10 +573,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     # Single-model mode (original behavior).
-    if not args.model:
-        print("Error: --model or --targets is required.", file=sys.stderr)
-        return 1
-
     config = PipelineConfig(
         model_name=args.model,
         suite=args.suite,

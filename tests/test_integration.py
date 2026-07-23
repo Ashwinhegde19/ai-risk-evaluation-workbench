@@ -290,6 +290,88 @@ def test_main_post_comment_without_env(
 
 
 # ---------------------------------------------------------------------------
+# 7b. --targets resolution ("all" expansion, explicit slugs, default)
+# ---------------------------------------------------------------------------
+
+
+def test_main_targets_all_expands_to_configured_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--targets all expands to the full target_models list from config.yaml."""
+    captured_targets: list[list[str]] = []
+
+    def _fake_run_comparison(targets: list[str], **kwargs: object) -> dict:
+        captured_targets.append(list(targets))
+        return {"comparison": {"targets": targets, "rows": []}, "outcomes": {}}
+
+    monkeypatch.setattr("src.pipeline.run.run_comparison", _fake_run_comparison)
+
+    exit_code = main(["--targets", "all", "--mock", "--report-dir", str(tmp_path)])
+
+    assert exit_code == 0
+    assert captured_targets == [
+        [
+            "openai/gpt-5",
+            "anthropic/claude-opus-4.1",
+            "google/gemini-2.5-pro",
+            "qwen3-8b",
+        ]
+    ]
+
+
+def test_main_targets_explicit_slugs_pass_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--targets with explicit comma-separated slugs is used verbatim."""
+    captured_targets: list[list[str]] = []
+
+    def _fake_run_comparison(targets: list[str], **kwargs: object) -> dict:
+        captured_targets.append(list(targets))
+        return {"comparison": {"targets": targets, "rows": []}, "outcomes": {}}
+
+    monkeypatch.setattr("src.pipeline.run.run_comparison", _fake_run_comparison)
+
+    exit_code = main(
+        [
+            "--targets",
+            "openai/gpt-5, qwen3-8b",
+            "--mock",
+            "--report-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured_targets == [["openai/gpt-5", "qwen3-8b"]]
+
+
+def test_main_omitted_targets_defaults_to_configured_targets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Omitting --targets (and --model) defaults to config.yaml target_models."""
+    captured_targets: list[list[str]] = []
+
+    def _fake_run_comparison(targets: list[str], **kwargs: object) -> dict:
+        captured_targets.append(list(targets))
+        return {"comparison": {"targets": targets, "rows": []}, "outcomes": {}}
+
+    monkeypatch.setattr("src.pipeline.run.run_comparison", _fake_run_comparison)
+
+    exit_code = main(["--mock", "--report-dir", str(tmp_path)])
+
+    assert exit_code == 0
+    assert captured_targets == [
+        [
+            "openai/gpt-5",
+            "anthropic/claude-opus-4.1",
+            "google/gemini-2.5-pro",
+            "qwen3-8b",
+        ]
+    ]
+
+
+# ---------------------------------------------------------------------------
 # 8. Unit-level helpers
 # ---------------------------------------------------------------------------
 
