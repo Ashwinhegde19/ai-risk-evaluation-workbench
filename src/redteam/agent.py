@@ -10,6 +10,13 @@ attacks. For each attack it starts with the first strategy in its list and:
 
 Each attack produces an :class:`~src.core.models.AttackTree` capturing the
 turns, the ordered ``strategy_chain``, a ``final_score`` and a ``success`` flag.
+
+To stay within a target model's context window (e.g. Qwen3-8B's 4096 tokens),
+the history handed to each strategy is a sliding window over the full turn
+history: the oldest turns are dropped first once the estimated token count
+approaches ``RedTeamConfig.max_context_tokens``. The full history is still
+recorded in the :class:`~src.core.models.AttackTree`; only the strategy's view
+is windowed.
 """
 
 from __future__ import annotations
@@ -21,6 +28,84 @@ from pydantic import Field
 from src.backends.base import ModelBackend
 from src.core.models import AttackTree, AttackTurn, BaseWorkbenchModel
 from src.redteam.strategies.base import AttackStrategy, analyze_response
+
+# Rough token estimate for English text (~4 characters per token). Used only to
+# size the sliding context window; exact tokenization is backend-specific.
+CHARS_PER_TOKEN = 4
+
+# Tokens reserved for the next attacker prompt + the model's reply, so the
+# windowed history never consumes the entire context budget.
+DEFAULT_RESERVE_TOKENS = 512
+
+
+def estimate_tokens(text: str) -> int:
+    """Return a rough token count for ``text`` (~4 chars/token).
+
+    Args:
+        text: The text to estimate.
+
+    Returns:
+        An estimated token count (at least 1 for non-empty input).
+    """
+    if not text:
+        return 0
+    return max(1, len(text) // CHARS_PER_TOKEN)
+
+
+def history_tokens(history: List[AttackTurn]) -> int:
+    """Return the total estimated tokens across all turns (prompt + response).
+
+    Args:
+        history: The attack turns to measure.
+
+    Returns:
+        The summed estimated token count.
+    """
+    total = 0
+    for turn in history:
+        total += estimate_tokens(turn.attacker_prompt)
+        total += estimate_tokens(turn.model_response)
+    return total
+
+
+def truncate_history(
+    history: List[AttackTurn],
+    max_context_tokens: int = 4096,
+    reserve_tokens: int = DEFAULT_RESERVE_TOKENS,
+) -> List[AttackTurn]:
+    """Return a sliding window over ``history`` that fits the context budget.
+
+    Drops the *oldest* turns first, keeping the most recent ones, so a long
+    multi-turn conversation never overflows the model's context window (e.g.
+    Qwen3-8B's 4096). At least the most recent turn is always retained.
+
+    Args:
+        history: The full turn history (oldest first).
+        max_context_tokens: The model's context window in tokens.
+        reserve_tokens: Tokens held back for the next prompt + reply.
+
+    Returns:
+        A (possibly shorter) list of the most recent turns that fit the budget,
+        in original order.
+    """
+    budget = max_context_tokens - reserve_tokens
+    if budget <= 0 or not history:
+        return list(history)
+
+    kept: List[AttackTurn] = []
+    total = 0
+    # Walk newest -> oldest, accumulating turns until the budget would be
+    # exceeded. The ``and kept`` guard guarantees at least one turn survives.
+    for turn in reversed(history):
+        turn_tokens = estimate_tokens(turn.attacker_prompt) + estimate_tokens(
+            turn.model_response
+        )
+        if total + turn_tokens > budget and kept:
+            break
+        kept.append(turn)
+        total += turn_tokens
+    kept.reverse()
+    return kept
 
 
 class RedTeamConfig(BaseWorkbenchModel):
@@ -43,6 +128,14 @@ class RedTeamConfig(BaseWorkbenchModel):
     )
     system_prompt: Optional[str] = Field(
         default=None, description="Optional system prompt sent with each turn."
+    )
+    max_context_tokens: int = Field(
+        default=4096,
+        ge=512,
+        description=(
+            "Model context window in tokens. The turn history is truncated "
+            "(oldest first) to stay within this budget."
+        ),
     )
 
 
@@ -133,10 +226,15 @@ class RedTeamAgent:
             if strategy.name not in strategy_chain:
                 strategy_chain.append(strategy.name)
 
+            # Slide the context window so long conversations never overflow the
+            # model's context (e.g. Qwen3-8B's 4096 tokens). The full history is
+            # still recorded in the AttackTree; only the strategy's view is windowed.
+            windowed = truncate_history(history, cfg.max_context_tokens)
+
             if escalation_level == 0:
-                prompt = strategy.generate_prompt(turn, history)
+                prompt = strategy.generate_prompt(turn, windowed)
             else:
-                prompt = strategy.get_escalation_prompt(turn, history)
+                prompt = strategy.get_escalation_prompt(turn, windowed)
 
             response = self.target.generate(
                 prompt,
@@ -191,4 +289,10 @@ class RedTeamAgent:
         return [self.run_attack(prompt) for prompt in root_prompts]
 
 
-__all__ = ["RedTeamAgent", "RedTeamConfig"]
+__all__ = [
+    "RedTeamAgent",
+    "RedTeamConfig",
+    "estimate_tokens",
+    "history_tokens",
+    "truncate_history",
+]

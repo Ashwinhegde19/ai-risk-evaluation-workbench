@@ -315,9 +315,11 @@ def run_pipeline(
 
     report_dir = Path(config.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
-    json_path = report_dir / f"compliance_{config.model_name}.json"
-    pdf_path = report_dir / f"compliance_{config.model_name}.pdf"
-    cert_path = report_dir / f"certificate_{config.model_name}.json"
+    # Sanitize model name for filesystem (replace / with _).
+    safe_name = config.model_name.replace("/", "_")
+    json_path = report_dir / f"compliance_{safe_name}.json"
+    pdf_path = report_dir / f"compliance_{safe_name}.pdf"
+    cert_path = report_dir / f"certificate_{safe_name}.json"
 
     write_json_report(compliance_report, json_path)
     report_generator.to_pdf(pdf_path, compliance_report)
@@ -353,6 +355,94 @@ def run_pipeline(
     }
 
 
+def run_comparison(
+    targets: List[str],
+    *,
+    mock: bool = False,
+    suite: str = "full",
+    report_dir: str = "results",
+    max_redteam_turns: int = 3,
+    now: Optional[datetime] = None,
+) -> Dict[str, object]:
+    """Run the eval pipeline against every target and build a comparison table.
+
+    This is the frontier-vs-open entry point: it evaluates each target (frontier
+    models via the Kilo gateway and ``qwen3-8b`` via the Modal L4 endpoint) and
+    assembles a side-by-side comparison of overall risk tier, mean safety score,
+    and finding counts.
+
+    Args:
+        targets: Ordered model slugs to evaluate.
+        mock: When True, use deterministic network-free backends for all targets.
+        suite: Eval suite identifier.
+        report_dir: Directory for per-model artifacts.
+        max_redteam_turns: Max turns per red-team attack.
+        now: Optional fixed timestamp (for deterministic tests).
+
+    Returns:
+        A dict with a ``comparison`` table (list of per-model row dicts) and the
+        per-model ``outcomes``.
+    """
+    rows: List[Dict[str, object]] = []
+    outcomes: Dict[str, object] = {}
+    for target in targets:
+        config = PipelineConfig(
+            model_name=target,
+            suite=suite,
+            mock=mock,
+            report_dir=report_dir,
+            max_redteam_turns=max_redteam_turns,
+        )
+        outcome = run_pipeline(config, now=now)
+        outcomes[target] = outcome
+        summary = outcome["summary"]
+        eval_results = outcome["eval_results"]
+        mean_score = (
+            sum(r.score for r in eval_results) / len(eval_results) if eval_results else 0.0
+        )
+        rows.append(
+            {
+                "model": target,
+                "lane": "open-source" if target.lower().startswith("qwen3-8b") else "frontier",
+                "overall_risk_tier": summary["overall_risk_tier"],
+                "mean_safety_score": round(mean_score, 4),
+                "n_findings": summary["n_findings"],
+                "n_gaps": summary["n_gaps"],
+                "certificate_status": summary["certificate_status"],
+            }
+        )
+
+    comparison = {"targets": targets, "rows": rows}
+    print_comparison_table(comparison)
+    return {"comparison": comparison, "outcomes": outcomes}
+
+
+def print_comparison_table(comparison: Dict[str, object]) -> None:
+    """Print a markdown comparison table for the evaluated targets.
+
+    Args:
+        comparison: The comparison dict produced by :func:`run_comparison`.
+    """
+    rows = comparison.get("rows", [])
+    if not rows:
+        print("(no targets evaluated)")
+        return
+    header = (
+        "| Model | Lane | Risk Tier | Mean Safety | Findings | Gaps | Certificate |"
+    )
+    divider = "|---|---|---|---|---|---|---|"
+    print("\n=== Frontier vs Open-Source Comparison ===")
+    print(header)
+    print(divider)
+    for row in rows:
+        print(
+            f"| {row['model']} | {row['lane']} | {row['overall_risk_tier']} "
+            f"| {row['mean_safety_score']} | {row['n_findings']} | {row['n_gaps']} "
+            f"| {row['certificate_status']} |"
+        )
+    print()
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     """Construct the command-line argument parser.
 
@@ -362,7 +452,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the AI Risk Evaluation Workbench CI/CD pipeline."
     )
-    parser.add_argument("--model", required=True, help="Model identifier to evaluate.")
+    parser.add_argument("--model", required=False, help="Model identifier to evaluate.")
+    parser.add_argument(
+        "--targets",
+        default=None,
+        help="Comma-separated model slugs for a frontier-vs-open comparison run.",
+    )
     parser.add_argument("--suite", default="full", help="Eval suite identifier.")
     parser.add_argument(
         "--mock",
@@ -421,6 +516,28 @@ def main(argv: Optional[List[str]] = None) -> int:
         is detected (so CI fails the build).
     """
     args = _build_arg_parser().parse_args(argv)
+
+    # Multi-target comparison mode: evaluate every slug and print a table.
+    if args.targets:
+        targets = [t.strip() for t in args.targets.split(",") if t.strip()]
+        result = run_comparison(
+            targets,
+            mock=args.mock,
+            suite=args.suite,
+            report_dir=args.report_dir,
+            max_redteam_turns=args.max_redteam_turns,
+        )
+        # Fail CI if any target has a critical regression.
+        for outcome in result["outcomes"].values():
+            if outcome["summary"]["has_critical_regression"]:
+                print("CRITICAL REGRESSION DETECTED -- failing CI.", file=sys.stderr)
+                return 1
+        return 0
+
+    # Single-model mode (original behavior).
+    if not args.model:
+        print("Error: --model or --targets is required.", file=sys.stderr)
+        return 1
 
     config = PipelineConfig(
         model_name=args.model,
