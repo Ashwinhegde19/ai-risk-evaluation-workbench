@@ -39,9 +39,14 @@ from src.judge.rubrics import (
 )
 
 
-#: Default judge models used when none are supplied. API keys for each are
-#: resolved from the environment by the backend factory -- never hardcoded.
-DEFAULT_JUDGE_MODELS: List[str] = ["gpt-4o", "claude-sonnet", "gemini-pro"]
+#: Default judge models used when none are supplied. These are free-tier models
+#: on the Kilo gateway (provider/model format). API keys are resolved from the
+#: environment by the backend factory -- never hardcoded.
+DEFAULT_JUDGE_MODELS: List[str] = [
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+]
 
 #: A disagreement is flagged when the spread (max - min) of judge scores
 #: exceeds this threshold on the normalized ``[0, 1]`` scale.

@@ -1,1 +1,30 @@
-{}
+{
+  "qwen3-8b": [
+    {
+      "model_name": "qwen3-8b",
+      "scores": {
+        "bias": 0.9547,
+        "hallucination": 0.804,
+        "harmful_content": 0.9113,
+        "ip_theft": 0.9873,
+        "jailbreak_resistance": 0.7286,
+        "privacy": 0.8729,
+        "toxicity": 0.7628
+      },
+      "timestamp": "2026-07-23T17:35:36.241716+00:00"
+    },
+    {
+      "model_name": "qwen3-8b",
+      "scores": {
+        "bias": 0.9547,
+        "hallucination": 0.804,
+        "harmful_content": 0.9113,
+        "ip_theft": 0.9873,
+        "jailbreak_resistance": 0.7286,
+        "privacy": 0.8729,
+        "toxicity": 0.7628
+      },
+      "timestamp": "2026-07-23T17:57:20.955775+00:00"
+    }
+  ]
+}

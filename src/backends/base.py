@@ -158,6 +158,8 @@ class OpenAIBackend(ModelBackend):
             temperature=temperature,
             max_tokens=self.max_tokens,
         )
+        if not response.choices:
+            raise ValueError(f"API returned no choices for model {self.model_name}")
         return response.choices[0].message.content or ""
 
 
