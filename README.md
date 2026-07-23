@@ -8,11 +8,28 @@ A compliance and red-team evaluation platform for LLMs. It runs multi-turn adver
 
 ```mermaid
 flowchart LR
-    subgraph Backends
-        OB[OpenAI]
-        AB[Anthropic]
-        LB[Local / HF]
-        MB[Mock]
+    subgraph Routing["Backend Routing"]
+        direction TB
+        R1["openai/gpt-5<br/>anthropic/claude-opus-4.1<br/>google/gemini-2.5-pro"]
+        R2["qwen3-8b"]
+    end
+
+    subgraph Lanes["Model Lanes"]
+        direction TB
+        subgraph Frontier["Frontier Lane (Kilo Gateway)"]
+            KG[Kilo API Gateway]
+            GPT[GPT-5]
+            CLAUDE[Claude Opus 4.1]
+            GEMINI[Gemini 2.5 Pro]
+            KG --> GPT
+            KG --> CLAUDE
+            KG --> GEMINI
+        end
+        subgraph OpenSource["Open-Source Lane (Modal L4)"]
+            MODAL[Modal Endpoint]
+            QWEN[Qwen3-8B via vLLM]
+            MODAL --> QWEN
+        end
     end
 
     subgraph RedTeam["Red-Team Agent"]
@@ -46,13 +63,17 @@ flowchart LR
         POL[Tier Policies]
     end
 
-    Backends --> RedTeam
+    R1 -->|KILO_BASE_URL| KG
+    R2 -->|OPEN_MODEL_BASE_URL| MODAL
+    Frontier --> RedTeam
+    OpenSource --> RedTeam
     RedTeam --> Judge
     Judge --> Compliance
     Compliance --> Reports["Reports (JSON + PDF)"]
     Compliance --> Pipeline["CI/CD Pipeline"]
     Pipeline --> Dashboard["Streamlit Dashboard"]
-    Guard -.-> Backends
+    Guard -.-> Frontier
+    Guard -.-> OpenSource
     Guard -.-> Reports
 ```
 
@@ -144,6 +165,9 @@ pip install -e ".[dev]"
 # Run the full pipeline offline (no API keys needed)
 python -m src.pipeline.run --model gpt-4o --mock --report-dir results
 
+# Run multi-target comparison (frontier vs open-source)
+python -m src.pipeline.run --targets "openai/gpt-5,anthropic/claude-opus-4.1,qwen3-8b" --mock
+
 # Generate demo artifacts
 python -m src.demo
 
@@ -153,6 +177,81 @@ streamlit run src/dashboard/app.py
 # Run tests
 pytest tests/ -v
 ```
+
+## Self-Deployed Open-Source Model
+
+The workbench includes a self-deployed open-source target (Qwen3-8B) running on Modal.com with an NVIDIA L4 GPU (24 GB VRAM). This enables direct comparison between frontier models (accessed via Kilo gateway) and open-source models (self-hosted via Modal).
+
+### Deployment
+
+The Modal deployment script (`modal_deploy.py`) packages Qwen3-8B with vLLM and exposes an OpenAI-compatible API endpoint:
+
+```bash
+# Deploy to Modal (requires modal CLI and account)
+modal deploy modal_deploy.py
+
+# The script prints the endpoint URL, e.g.:
+# https://your-workspace--qwen3-8b-inference.modal.run
+```
+
+Set the endpoint in your environment:
+
+```bash
+export OPEN_MODEL_BASE_URL=https://your-workspace--qwen3-8b-inference.modal.run/v1
+export OPEN_MODEL_API_KEY=none  # Modal endpoints typically don't require auth
+```
+
+### Verification
+
+Run the smoke test to verify the Modal endpoint is working:
+
+```bash
+python scripts/modal_smoke_test.py
+```
+
+Expected output:
+
+```
+[smoke] target base_url: https://your-workspace--qwen3-8b-inference.modal.run/v1
+[smoke] GET https://your-workspace--qwen3-8b-inference.modal.run/v1/models
+[smoke] models listed: ['qwen3-8b']
+[smoke] POST https://your-workspace--qwen3-8b-inference.modal.run/v1/chat/completions
+[smoke] model:      qwen3-8b
+[smoke] response:   'MODAL_L4_OK'
+[smoke] usage:      {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15}
+[smoke] latency:    0.42s
+[smoke] PASS: Modal L4 endpoint is serving Qwen3-8B correctly.
+```
+
+### Why L4?
+
+The NVIDIA L4 GPU (24 GB VRAM) is the smallest GPU that can comfortably serve Qwen3-8B:
+
+- **Qwen3-8B FP16 weights:** ~16 GB
+- **KV cache at 4K context:** ~4-6 GB
+- **Total:** ~20-22 GB (fits in 24 GB with headroom)
+
+Larger models (14B+) would require A10G (24 GB) or A100 (40/80 GB). The L4 provides good price-performance for 8B-class models.
+
+### Comparison Table Structure
+
+When running multi-target comparisons, the pipeline generates a table like:
+
+```
+=== Frontier vs Open-Source Comparison ===
+| Model | Lane | Risk Tier | Mean Safety | Findings | Gaps | Certificate |
+|---|---|---|---|---|---|---|
+| openai/gpt-5 | frontier | minimal | 0.7977 | 6 | 6 | pass |
+| anthropic/claude-opus-4.1 | frontier | minimal | 0.8234 | 5 | 5 | pass |
+| qwen3-8b | open-source | limited | 0.8602 | 3 | 3 | pass |
+```
+
+The open-source model typically shows:
+- **Higher mean safety scores** (less aligned, more permissive)
+- **Fewer compliance findings** (simpler behavior, fewer edge cases)
+- **Different risk tier** (often "limited" vs "minimal" for frontier models)
+
+This is expected: frontier models undergo extensive RLHF and safety training, while open-source models are base or lightly fine-tuned.
 
 ## Compliance Framework Coverage
 
@@ -290,19 +389,31 @@ Copy `.env.example` to `.env` and fill in the keys you need. No keys are require
 | `OPENAI_API_KEY` | OpenAI / GPT judge and target backend |
 | `ANTHROPIC_API_KEY` | Anthropic / Claude judge and target backend |
 | `KILO_API_KEY` | Kilo Gateway (OpenAI-compatible) frontier provider |
-| `KILO_BASE_URL` | Kilo Gateway base URL |
+| `KILO_BASE_URL` | Kilo Gateway base URL (e.g., `https://api.kilo.ai/api/gateway`) |
+| `OPEN_MODEL_API_KEY` | Modal endpoint API key (usually `none` for Modal) |
+| `OPEN_MODEL_BASE_URL` | Modal endpoint URL (e.g., `https://your-workspace--qwen3-8b-inference.modal.run/v1`) |
 | `FRONTIER_PROVIDER` | `kilo` or `openai` |
 | `FRONTIER_MODEL` | Frontier model identifier |
 | `OSS_BACKEND` | `local` or `modal` |
 | `OSS_MODEL_ID` | Hugging Face model ID for local inference |
-| `MODAL_OSS_ENDPOINT` | Modal-hosted OSS endpoint URL |
-| `MODAL_API_KEY` | Modal API key |
+| `MODAL_OSS_ENDPOINT` | Modal-hosted OSS endpoint URL (legacy) |
+| `MODAL_API_KEY` | Modal API key (legacy) |
 | `JUDGE_MODEL` | Override default judge model |
 | `ENABLE_RETRIEVAL` | Enable local KB retrieval grounding |
 | `ENABLE_WEB_SEARCH` | Enable web evidence search |
 | `TAVILY_API_KEY` | Tavily web search provider key |
 
 API keys are resolved from environment variables at runtime and are never stored in config files or source control. The `config.yaml` system records only the *name* of the env var holding each key.
+
+### Backend Routing
+
+The `get_backend()` function routes models based on slug patterns:
+
+- **Namespaced slugs** (e.g., `openai/gpt-5`, `anthropic/claude-opus-4.1`) → Kilo gateway via `KILO_BASE_URL`
+- **`qwen3-8b*` slugs** → Modal endpoint via `OPEN_MODEL_BASE_URL`
+- **Non-namespaced slugs** (e.g., `gpt-4o`, `claude-sonnet`) → `config.yaml` lookup
+
+If a required base URL is missing and `MOCK != 1`, the backend raises a clear error at startup rather than silently falling back to mock mode.
 
 ## Development
 
