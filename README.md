@@ -205,7 +205,32 @@ All artifacts are deterministic (fixed timestamp `2026-01-15T12:00:00Z`) and saf
 
 ## Screenshots
 
-The dashboard has five pages: Overview, Model Comparison, Red-Team Results, Compliance, and Trends. Dashboard screenshots and a demo GIF will be added here.
+The dashboard has five pages:
+
+### Overview
+Radar chart of mean safety scores across 7 risk dimensions, with KPI tiles for overall score, models evaluated, and red-team success rate.
+
+![Overview](docs/screenshots/overview.png)
+
+### Model Comparison
+Side-by-side radar charts for two models, per-dimension score table, and response diffs.
+
+![Model Comparison](docs/screenshots/comparison.png)
+
+### Red-Team Results
+Attack-tree graph (Graphviz) showing multi-turn escalation, with turn-by-turn drill-down, strategy chain, and per-turn scores.
+
+![Red-Team Results](docs/screenshots/redteam.png)
+
+### Compliance
+EU AI Act / NIST AI RMF / ISO 42001 findings with gap analysis, control IDs, severity, and PDF/JSON export.
+
+![Compliance](docs/screenshots/compliance.png)
+
+### Trends
+Historical score tracking across evaluation runs, with line charts per dimension and regression markers.
+
+![Trends](docs/screenshots/trends.png)
 
 The legacy Chainlit demo screenshots are preserved below:
 
