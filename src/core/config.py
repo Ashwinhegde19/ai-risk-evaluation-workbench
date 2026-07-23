@@ -125,6 +125,14 @@ class AppConfig(BaseModel):
     default_model: Optional[str] = Field(
         default=None, description="Name of the default model."
     )
+    target_models: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Ordered slugs evaluated in a frontier-vs-open comparison run. "
+            "Namespaced slugs (e.g. 'openai/gpt-5') route to the Kilo gateway; "
+            "'qwen3-8b' routes to the self-deployed Modal L4 endpoint."
+        ),
+    )
 
     def get_model(self, model_name: str) -> Optional[ModelConfig]:
         """Return the configuration for a named model, if present.
