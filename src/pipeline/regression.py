@@ -77,6 +77,10 @@ class RegressionReport(BaseWorkbenchModel):
     model_config = ConfigDict(strict=True)
 
     model_name: str = Field(..., description="Model whose run was compared.")
+    suite: str = Field(
+        default="full",
+        description="Eval suite this run belongs to; comparison is suite-scoped.",
+    )
     compared_against: Optional[datetime] = Field(
         default=None,
         description="Timestamp of the previous run this was compared to, if any.",
@@ -89,6 +93,13 @@ class RegressionReport(BaseWorkbenchModel):
     )
     has_critical: bool = Field(
         default=False, description="True if any critical regression occurred."
+    )
+    baseline_established: bool = Field(
+        default=False,
+        description=(
+            "True when no prior run of the same suite existed, so this run was "
+            "recorded as the new baseline rather than compared (not a regression)."
+        ),
     )
 
     @field_validator("compared_against", mode="before")
@@ -136,19 +147,26 @@ def save_history(path: str | Path, history: Dict[str, List[_Snapshot]]) -> Path:
     return p
 
 
-def _snapshot_to_dict(model_name: str, scores: Dict[str, float], timestamp: datetime) -> _Snapshot:
+def _snapshot_to_dict(
+    model_name: str,
+    scores: Dict[str, float],
+    timestamp: datetime,
+    suite: str = "full",
+) -> _Snapshot:
     """Serialize a run into the on-disk snapshot dict form.
 
     Args:
         model_name: The model that was evaluated.
         scores: Mapping of dimension -> score for this run.
         timestamp: When the run occurred.
+        suite: The eval suite that produced these scores.
 
     Returns:
         A JSON-serializable snapshot dict.
     """
     return {
         "model_name": model_name,
+        "suite": suite,
         "timestamp": timestamp.isoformat(),
         "scores": {dim: float(score) for dim, score in scores.items()},
     }
@@ -159,6 +177,7 @@ def record_run(
     model_name: str,
     scores: Dict[str, float],
     timestamp: Optional[datetime] = None,
+    suite: str = "full",
 ) -> Path:
     """Append a run snapshot to the history and persist it.
 
@@ -167,6 +186,7 @@ def record_run(
         model_name: The model that was evaluated.
         scores: Mapping of dimension -> score for this run.
         timestamp: When the run occurred (defaults to now, UTC).
+        suite: The eval suite that produced these scores (default "full").
 
     Returns:
         The path the history was written to.
@@ -174,28 +194,39 @@ def record_run(
     history = load_history(path)
     run_list = history.setdefault(model_name, [])
     snapshot = _snapshot_to_dict(
-        model_name, scores, timestamp or datetime.now(timezone.utc)
+        model_name, scores, timestamp or datetime.now(timezone.utc), suite=suite
     )
     run_list.append(snapshot)
     return save_history(path, history)
 
 
 def _latest_previous(
-    history: Dict[str, List[_Snapshot]], model_name: str
+    history: Dict[str, List[_Snapshot]], model_name: str, suite: str = "full"
 ) -> Optional[_Snapshot]:
-    """Return the most recent previous snapshot for a model, if any.
+    """Return the most recent previous snapshot for a model *and suite*, if any.
+
+    Only snapshots produced by the same eval suite are comparable; comparing a
+    ``full`` run against a prior ``small`` run would be meaningless (different
+    dimension coverage / scoring), so it is skipped. Snapshots recorded before
+    suite-tracking was added carry no ``suite`` key: their suite is unknown, so
+    they are treated as non-comparable and skipped -- the next suite-aware run
+    establishes a clean baseline rather than comparing against stale data.
 
     Args:
         history: The parsed history mapping.
         model_name: The model to look up.
+        suite: The eval suite to scope the comparison to.
 
     Returns:
-        The latest snapshot dict, or ``None`` when no prior runs exist.
+        The latest same-suite snapshot dict, or ``None`` when none exist.
     """
     runs = history.get(model_name)
     if not runs:
         return None
-    return runs[-1]
+    for snapshot in reversed(runs):
+        if snapshot.get("suite") == suite:
+            return snapshot
+    return None
 
 
 def detect_regressions(
@@ -203,25 +234,30 @@ def detect_regressions(
     current_scores: Dict[str, float],
     history_path: str | Path = DEFAULT_HISTORY_PATH,
     *,
+    suite: str = "full",
     regression_threshold: float = REGRESSION_THRESHOLD,
     critical_threshold: float = CRITICAL_THRESHOLD,
     critical_dimensions: frozenset[str] = CRITICAL_DIMENSIONS,
     timestamp: Optional[datetime] = None,
     record: bool = True,
 ) -> RegressionReport:
-    """Compare a model's current scores against its previous run.
+    """Compare a model's current scores against its previous run *of the same suite*.
 
-    Scores are compared dimension-by-dimension. A dimension is flagged as a
-    regression when its score dropped by more than ``regression_threshold``;
-    it is flagged as *critical* when the drop exceeds ``critical_threshold`` or
-    when the dimension is safety-critical and dropped by more than the standard
-    threshold. By default the current run is also recorded into the history so
-    subsequent runs compare against it.
+    Scores are compared dimension-by-dimension against the most recent prior run
+    that used the same eval ``suite`` (a ``full`` run is never compared against a
+    ``small`` run). A dimension is flagged as a regression when its score dropped
+    by more than ``regression_threshold``; it is flagged as *critical* when the
+    drop exceeds ``critical_threshold`` or when the dimension is safety-critical
+    and dropped by more than the standard threshold. When no prior same-suite run
+    exists, this run is recorded as the baseline and reported as
+    ``baseline_established`` (not a regression). By default the current run is
+    also recorded into the history so subsequent runs compare against it.
 
     Args:
         model_name: The model under evaluation.
         current_scores: Mapping of dimension -> score for the current run.
         history_path: Path to the history JSON file.
+        suite: The eval suite this run belongs to (default "full").
         regression_threshold: Drop fraction that constitutes a regression.
         critical_threshold: Drop fraction that constitutes a critical regression.
         critical_dimensions: Dimensions whose regression is always critical.
@@ -238,7 +274,8 @@ def detect_regressions(
         )
 
     history = load_history(history_path)
-    previous = _latest_previous(history, model_name)
+    previous = _latest_previous(history, model_name, suite)
+    baseline_established = previous is None
 
     findings: List[RegressionFinding] = []
     for dimension, current in sorted(current_scores.items()):
@@ -281,10 +318,12 @@ def detect_regressions(
 
     report = RegressionReport(
         model_name=model_name,
+        suite=suite,
         compared_against=compared_against,
         findings=findings,
         has_regression=any(f.is_regression for f in findings),
         has_critical=any(f.is_critical for f in findings),
+        baseline_established=baseline_established,
     )
 
     if record:
@@ -293,6 +332,7 @@ def detect_regressions(
             model_name,
             {dim: float(s) for dim, s in current_scores.items()},
             timestamp=timestamp,
+            suite=suite,
         )
 
     return report

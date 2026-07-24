@@ -352,6 +352,7 @@ def run_pipeline(
         config.model_name,
         scores,
         config.history_path,
+        suite=config.suite,
         timestamp=run_at,
     )
     certificate = try_generate_certificate(

@@ -167,5 +167,93 @@ class RegressionDetectionTests(unittest.TestCase):
         self.assertFalse(bias.is_regression)
 
 
+class SuiteAwareRegressionTests(unittest.TestCase):
+    """Regression comparison is scoped to the same eval suite."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = Path(self.dir.name) / "scores_history.json"
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_full_run_after_small_run_is_not_a_regression(self):
+        """A full run must not compare against a prior small run's scores."""
+        # Seed a SMALL run with high scores on a subset of dimensions.
+        small_scores = {"bias": 1.0, "toxicity": 1.0}
+        record_run(self.path, "m", small_scores, suite="small")
+
+        # A FULL run with lower scores on more dimensions. Suite-blind code would
+        # compare bias 1.0 -> 0.50 and flag a (false) critical regression.
+        full_scores = _make_scores(bias=0.50, toxicity=0.50)
+        report = detect_regressions("m", full_scores, self.path, suite="full", record=False)
+
+        # No same-suite baseline existed -> baseline established, no regression.
+        self.assertTrue(report.baseline_established)
+        self.assertFalse(report.has_regression)
+        self.assertFalse(report.has_critical)
+        self.assertIsNone(report.compared_against)
+        self.assertEqual(report.suite, "full")
+
+    def test_two_full_runs_with_large_drop_is_a_regression(self):
+        """Two runs of the SAME suite are compared; a >5% drop is flagged."""
+        record_run(self.path, "m", _make_scores(), suite="full")
+        worse = _make_scores(bias=0.79)  # 0.85 -> 0.79 (>5%)
+        report = detect_regressions("m", worse, self.path, suite="full", record=False)
+
+        self.assertFalse(report.baseline_established)
+        self.assertTrue(report.has_regression)
+        bias = next(f for f in report.findings if f.dimension == "bias")
+        self.assertTrue(bias.is_regression)
+        self.assertIsNotNone(report.compared_against)
+
+    def test_small_run_does_not_compare_against_full_baseline(self):
+        """Symmetric: a small run ignores a prior full baseline."""
+        record_run(self.path, "m", _make_scores(), suite="full")  # full baseline
+        small_scores = {"bias": 0.10}  # would look like a huge drop vs full's 0.85
+        report = detect_regressions("m", small_scores, self.path, suite="small", record=False)
+
+        self.assertTrue(report.baseline_established)
+        self.assertFalse(report.has_regression)
+
+    def test_first_run_of_suite_establishes_baseline(self):
+        """The first run of a suite is recorded as baseline, not a regression."""
+        report = detect_regressions(
+            "brand-new-model", _make_scores(), self.path, suite="full", record=True
+        )
+        self.assertTrue(report.baseline_established)
+        self.assertFalse(report.has_regression)
+        self.assertIsNone(report.compared_against)
+        # The run was persisted with its suite tag.
+        history = load_history(self.path)
+        self.assertEqual(history["brand-new-model"][0]["suite"], "full")
+
+    def test_legacy_snapshot_without_suite_is_non_comparable(self):
+        """Pre-suite snapshots (no 'suite' key) are stale and skipped.
+
+        Their suite is unknown, so they must not be used as a baseline -- the
+        next suite-aware run establishes a clean baseline instead.
+        """
+        # Hand-write a legacy snapshot with no suite key.
+        legacy = {
+            "m": [
+                {
+                    "model_name": "m",
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                    "scores": _make_scores(),
+                }
+            ]
+        }
+        save_history(self.path, legacy)
+
+        # A full run does NOT compare against the legacy snapshot; it
+        # establishes a clean full baseline (no regression reported).
+        worse = _make_scores(bias=0.79)
+        report = detect_regressions("m", worse, self.path, suite="full", record=False)
+        self.assertTrue(report.baseline_established)
+        self.assertFalse(report.has_regression)
+        self.assertIsNone(report.compared_against)
+
+
 if __name__ == "__main__":
     unittest.main()

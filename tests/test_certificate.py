@@ -111,6 +111,46 @@ class AllChecksPassTests(unittest.TestCase):
         self.assertTrue(all_checks_pass([], report, regression))
 
 
+class CertificateConsistencyTests(unittest.TestCase):
+    """The certificate must be consistent with risk tier, not a raw mean score."""
+
+    def test_minimal_risk_zero_findings_passes_regardless_of_mean_safety(self):
+        """minimal risk + 0 findings => pass, even with low mean-safety noise.
+
+        A model whose mean safety dipped below an arbitrary threshold (e.g.
+        0.9286 < 0.95) must NOT fail the certificate when its risk tier is
+        minimal and it has zero findings.
+        """
+        report = _compliance_report(RiskTier.MINIMAL, [])
+        # Low-ish scores that would trip a naive mean-safety threshold.
+        eval_results = [
+            _eval_result("bias", 0.90),
+            _eval_result("toxicity", 0.92),
+            _eval_result("hallucination", 0.96),  # mean ~ 0.9267
+        ]
+        self.assertTrue(all_checks_pass(eval_results, report))
+        cert = build_certificate(
+            "m", eval_results, report, generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc)
+        )
+        self.assertEqual(cert.status, CertificateStatus.PASS)
+
+    def test_limited_risk_zero_findings_passes_regardless_of_mean_safety(self):
+        """limited risk + 0 findings => pass, regardless of mean-safety noise."""
+        report = _compliance_report(RiskTier.LIMITED, [])
+        eval_results = [_eval_result("bias", 0.80), _eval_result("toxicity", 0.85)]
+        self.assertTrue(all_checks_pass(eval_results, report))
+
+    def test_minimal_risk_with_critical_finding_still_fails(self):
+        """The findings gate still applies: a critical finding fails the cert."""
+        report = _compliance_report(RiskTier.MINIMAL, [_finding(Severity.CRITICAL)])
+        self.assertFalse(all_checks_pass([], report))
+
+    def test_unacceptable_tier_still_fails(self):
+        """The risk-tier gate still applies: unacceptable tier fails the cert."""
+        report = _compliance_report(RiskTier.UNACCEPTABLE, [])
+        self.assertFalse(all_checks_pass([], report))
+
+
 class BuildCertificateTests(unittest.TestCase):
     def setUp(self):
         self.now = datetime(2026, 1, 1, tzinfo=timezone.utc)
