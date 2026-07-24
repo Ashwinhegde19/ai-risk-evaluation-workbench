@@ -30,6 +30,10 @@ from typing import Callable, Dict, List, Optional
 from pydantic import ConfigDict, Field
 
 from src.backends.base import ModelBackend, get_backend
+from src.compliance.redteam_mapping import (
+    DeploymentContext,
+    attack_trees_to_findings,
+)
 from src.core.config import load_config
 from src.core.models import (
     AttackTree,
@@ -99,6 +103,13 @@ class PipelineConfig(BaseWorkbenchModel):
     redteam_strategies: List[str] = Field(
         default_factory=lambda: ["all"],
         description="Red-team strategies to use ('all' for every strategy).",
+    )
+    deployment_context: str = Field(
+        default="limited",
+        description=(
+            "Deployment context that scales red-team break risk "
+            "('high_risk' | 'limited' | 'minimal')."
+        ),
     )
     post_comment: bool = Field(
         default=False, description="Post a PR comment when run inside a PR."
@@ -342,8 +353,19 @@ def run_pipeline(
         max_turns=config.max_redteam_turns,
     )
 
+    # Map red-team breaks into compliance findings so the report is
+    # adversarially-aware (a passive "pass" that is fragile under attack is
+    # surfaced via the adversarial risk tier and, at high break rates, a
+    # critical finding that fails the certificate).
+    redteam_findings = attack_trees_to_findings(config.model_name, attack_trees)
+    deployment_context = DeploymentContext(config.deployment_context)
+
     report_generator = ComplianceReportGenerator(
-        config.model_name, eval_results, timestamp=run_at
+        config.model_name,
+        eval_results,
+        timestamp=run_at,
+        redteam_findings=redteam_findings,
+        deployment_context=deployment_context,
     )
     compliance_report = report_generator.build_report()
 
@@ -384,7 +406,13 @@ def run_pipeline(
         "n_eval_results": len(eval_results),
         "n_attacks": len(attack_trees),
         "overall_risk_tier": compliance_report.overall_risk_tier.value,
+        "adversarial_risk_tier": (
+            compliance_report.adversarial_risk_tier.value
+            if compliance_report.adversarial_risk_tier
+            else None
+        ),
         "n_findings": len(compliance_report.findings),
+        "n_redteam_findings": len(compliance_report.redteam_findings),
         "n_gaps": len(compliance_report.gaps),
         "has_regression": regression_report.has_regression,
         "has_critical_regression": regression_report.has_critical,
@@ -455,6 +483,7 @@ def run_comparison(
                 "model": target,
                 "lane": "open-source" if target.lower().startswith("qwen3-8b") else "frontier",
                 "overall_risk_tier": summary["overall_risk_tier"],
+                "adversarial_risk_tier": summary.get("adversarial_risk_tier") or "-",
                 "mean_safety_score": round(mean_score, 4),
                 "n_findings": summary["n_findings"],
                 "n_gaps": summary["n_gaps"],
@@ -478,15 +507,16 @@ def print_comparison_table(comparison: Dict[str, object]) -> None:
         print("(no targets evaluated)")
         return
     header = (
-        "| Model | Lane | Risk Tier | Mean Safety | Findings | Gaps | Certificate |"
+        "| Model | Lane | Risk Tier | Adversarial Tier | Mean Safety | Findings | Gaps | Certificate |"
     )
-    divider = "|---|---|---|---|---|---|---|"
+    divider = "|---|---|---|---|---|---|---|---|"
     print("\n=== Frontier vs Open-Source Comparison ===")
     print(header)
     print(divider)
     for row in rows:
         print(
             f"| {row['model']} | {row['lane']} | {row['overall_risk_tier']} "
+            f"| {row['adversarial_risk_tier']} "
             f"| {row['mean_safety_score']} | {row['n_findings']} | {row['n_gaps']} "
             f"| {row['certificate_status']} |"
         )

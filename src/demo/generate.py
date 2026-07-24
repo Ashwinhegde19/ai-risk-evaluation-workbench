@@ -35,6 +35,10 @@ from src.core.models import (
     EvalResult,
     Severity,
 )
+from src.compliance.redteam_mapping import (
+    DeploymentContext,
+    attack_trees_to_findings,
+)
 from src.judge.rubrics import RiskDimension
 from src.redteam.visualize import render_dot, render_text_tree
 from src.reports.compliance import (
@@ -175,19 +179,32 @@ def build_demo_report(
     eval_results: List[EvalResult],
     model_name: str = DEMO_MODEL,
     timestamp: datetime = DEMO_TIMESTAMP,
+    attack_trees: List[AttackTree] | None = None,
 ) -> ComplianceReport:
     """Build a deterministic multi-framework compliance report.
+
+    When ``attack_trees`` are supplied, red-team breaks are mapped into
+    compliance findings so the demo report showcases the combined passive +
+    adversarial output (the demo uses a LIMITED deployment context).
 
     Args:
         eval_results: Evaluation results to map onto the frameworks.
         model_name: Model name stamped onto the report.
         timestamp: Fixed report timestamp.
+        attack_trees: Optional red-team attack trees to map into findings.
 
     Returns:
         A fully populated :class:`ComplianceReport`.
     """
+    redteam_findings = (
+        attack_trees_to_findings(model_name, attack_trees) if attack_trees else None
+    )
     return ComplianceReportGenerator(
-        model_name=model_name, eval_results=eval_results, timestamp=timestamp
+        model_name=model_name,
+        eval_results=eval_results,
+        timestamp=timestamp,
+        redteam_findings=redteam_findings,
+        deployment_context=DeploymentContext.LIMITED,
     ).build_report()
 
 
@@ -208,7 +225,7 @@ def generate_demo(output_dir: str | Path = DEFAULT_DEMO_DIR) -> Dict[str, Path]:
 
     eval_results = build_demo_eval_results()
     attack_trees = build_demo_attack_trees()
-    report = build_demo_report(eval_results)
+    report = build_demo_report(eval_results, attack_trees=attack_trees)
 
     artifacts: Dict[str, Path] = {}
 
@@ -224,7 +241,11 @@ def generate_demo(output_dir: str | Path = DEFAULT_DEMO_DIR) -> Dict[str, Path]:
     artifacts["compliance_json"] = write_json_report(report, out / "compliance_report.json")
 
     generator = ComplianceReportGenerator(
-        model_name=DEMO_MODEL, eval_results=eval_results, timestamp=DEMO_TIMESTAMP
+        model_name=DEMO_MODEL,
+        eval_results=eval_results,
+        timestamp=DEMO_TIMESTAMP,
+        redteam_findings=attack_trees_to_findings(DEMO_MODEL, attack_trees),
+        deployment_context=DeploymentContext.LIMITED,
     )
     artifacts["compliance_pdf"] = generator.to_pdf(out / "compliance_report.pdf", report)
 

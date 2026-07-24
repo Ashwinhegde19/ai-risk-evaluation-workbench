@@ -31,6 +31,12 @@ from src.compliance._common import max_risk_tier
 from src.compliance.eu_ai_act import classify_risk_tier
 from src.compliance.iso_42001 import map_to_iso_42001
 from src.compliance.nist_rmf import map_to_nist_rmf
+from src.compliance.redteam_mapping import (
+    DeploymentContext,
+    adversarial_finding,
+    adversarial_risk_tier,
+    map_redteam_findings,
+)
 from src.reports._pdf import write_pdf
 
 # Width (chars) used when wrapping long lines for the PDF / text rendering.
@@ -50,6 +56,8 @@ class ComplianceReportGenerator:
         model_name: str,
         eval_results: List[EvalResult],
         timestamp: datetime | None = None,
+        redteam_findings: List[dict] | None = None,
+        deployment_context: DeploymentContext = DeploymentContext.LIMITED,
     ) -> None:
         """Initialize the generator.
 
@@ -57,11 +65,19 @@ class ComplianceReportGenerator:
             model_name: Name of the model being reported on.
             eval_results: Raw evaluation results to map onto the frameworks.
             timestamp: Report time (UTC). Defaults to "now" if omitted.
+            redteam_findings: Optional red-team finding rows (``{target,
+                strategy, broke, turn, final_score, snippet?}``). When supplied,
+                breaks are mapped to compliance findings and the report becomes
+                adversarially-aware.
+            deployment_context: Scales the red-team risk tier (default LIMITED).
         """
         self.model_name = model_name
         self.eval_results: List[EvalResult] = list(eval_results)
         self.timestamp = timestamp or datetime.now(timezone.utc)
+        self.redteam_findings: List[dict] = list(redteam_findings or [])
+        self.deployment_context = deployment_context
         self._findings: List[ComplianceFinding] | None = None
+        self._redteam_compliance: List[ComplianceFinding] | None = None
 
     def build_findings(self) -> List[ComplianceFinding]:
         """Compute findings across all three frameworks (cached).
@@ -77,14 +93,65 @@ class ComplianceReportGenerator:
             )
         return self._findings
 
+    def build_redteam_findings(self) -> List[ComplianceFinding]:
+        """Map red-team breaks to compliance findings (cached).
+
+        Returns:
+            Compliance findings derived from red-team breaks, plus an aggregate
+            adversarial-risk finding when the break rate trips the policy.
+        """
+        if self._redteam_compliance is None:
+            break_rates = self._break_rates()
+            snippets = {
+                f"{f.get('target')}::{f.get('strategy')}": f.get("snippet", "")
+                for f in self.redteam_findings
+                if f.get("snippet")
+            }
+            mapped = map_redteam_findings(
+                self.redteam_findings,
+                self.deployment_context,
+                break_rates=break_rates,
+                snippets=snippets,
+            )
+            # Add the aggregate adversarial-risk finding per model (critical when
+            # the break rate trips the policy in a high-risk context).
+            for target, rate in break_rates.items():
+                agg = adversarial_finding(target, rate, self.deployment_context)
+                if agg is not None:
+                    mapped.append(agg)
+            self._redteam_compliance = mapped
+        return self._redteam_compliance
+
+    def _break_rates(self) -> Dict[str, float]:
+        """Compute the per-model break rate from the red-team findings.
+
+        Returns:
+            A ``{target: break_rate}`` mapping over every target that appears in
+            the red-team findings (breaks / total attacks for that target).
+        """
+        totals: Dict[str, int] = {}
+        breaks: Dict[str, int] = {}
+        for f in self.redteam_findings:
+            target = str(f.get("target", ""))
+            totals[target] = totals.get(target, 0) + 1
+            if f.get("broke"):
+                breaks[target] = breaks.get(target, 0) + 1
+        return {
+            target: (breaks.get(target, 0) / totals[target]) if totals[target] else 0.0
+            for target in totals
+        }
+
     def recommendations(self) -> List[str]:
         """Derive de-duplicated compliance recommendations (gaps) from findings.
+
+        Includes both passive-eval and red-team findings so the gap list reflects
+        adversarial weaknesses too.
 
         Returns:
             One recommendation string per unique (framework, control_id) pair,
             ordered by framework.
         """
-        findings = self.build_findings()
+        findings = self.build_findings() + self.build_redteam_findings()
         seen: set = set()
         gaps: List[str] = []
         for finding in findings:
@@ -101,16 +168,37 @@ class ComplianceReportGenerator:
     def build_report(self) -> ComplianceReport:
         """Assemble the :class:`ComplianceReport` for this model.
 
+        The report carries passive-eval findings and red-team findings as
+        separate lists; ``overall_risk_tier`` is the highest tier across *both*,
+        and ``adversarial_risk_tier`` reflects the red-team break rate in the
+        deployment context (so a passive "pass" that is fragile under attack is
+        surfaced).
+
         Returns:
             A fully populated, validated compliance report.
         """
         findings = self.build_findings()
-        overall = max_risk_tier([f.risk_tier for f in findings])
+        redteam = self.build_redteam_findings()
+        overall = max_risk_tier([f.risk_tier for f in findings + redteam])
+
+        break_rates = self._break_rates()
+        adv_tier: RiskTier | None = None
+        if self.redteam_findings:
+            # The adversarial tier is the worst per-model tier observed.
+            adv_tier = max_risk_tier(
+                [
+                    adversarial_risk_tier(rate, self.deployment_context)
+                    for rate in break_rates.values()
+                ]
+            )
+
         return ComplianceReport(
             model_name=self.model_name,
             timestamp=self.timestamp,
             findings=findings,
+            redteam_findings=redteam,
             overall_risk_tier=overall,
+            adversarial_risk_tier=adv_tier,
             gaps=self.recommendations(),
         )
 
@@ -215,6 +303,21 @@ class ComplianceReportGenerator:
             for wrapped in textwrap.wrap(f"Evidence: {finding.evidence}", _WRAP_WIDTH):
                 lines.append(f"    {wrapped}")
         lines.append("")
+        lines.append("=== Red-Team (Adversarial) Findings ===")
+        if report.adversarial_risk_tier is not None:
+            lines.append(f"Adversarial risk tier: {report.adversarial_risk_tier.value}")
+        if not report.redteam_findings:
+            lines.append("No red-team findings (no adversarial breaks mapped).")
+        for finding in report.redteam_findings:
+            lines.append(
+                f"[{finding.framework.value}] {finding.control_id} "
+                f"({finding.risk_tier.value}, {finding.severity.value})"
+            )
+            for wrapped in textwrap.wrap(finding.description, _WRAP_WIDTH):
+                lines.append(f"    {wrapped}")
+            for wrapped in textwrap.wrap(f"Evidence: {finding.evidence}", _WRAP_WIDTH):
+                lines.append(f"    {wrapped}")
+        lines.append("")
         lines.append("=== Gap Analysis & Recommendations ===")
         if report.gaps:
             for gap in report.gaps:
@@ -233,6 +336,8 @@ def generate_compliance_report(
     model_name: str,
     eval_results: List[EvalResult],
     timestamp: datetime | None = None,
+    redteam_findings: List[dict] | None = None,
+    deployment_context: DeploymentContext = DeploymentContext.LIMITED,
 ) -> ComplianceReport:
     """One-shot builder returning a populated :class:`ComplianceReport`.
 
@@ -240,12 +345,18 @@ def generate_compliance_report(
         model_name: Name of the model under assessment.
         eval_results: Raw evaluation results to map.
         timestamp: Report time (UTC). Defaults to "now" if omitted.
+        redteam_findings: Optional red-team finding rows to map.
+        deployment_context: Scales the red-team risk tier (default LIMITED).
 
     Returns:
         The assembled compliance report.
     """
     return ComplianceReportGenerator(
-        model_name=model_name, eval_results=eval_results, timestamp=timestamp
+        model_name=model_name,
+        eval_results=eval_results,
+        timestamp=timestamp,
+        redteam_findings=redteam_findings,
+        deployment_context=deployment_context,
     ).build_report()
 
 

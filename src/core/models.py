@@ -11,9 +11,29 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional, Type
+from typing import List, Optional, Type, Union, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _extract_enum(annotation: object) -> Optional[Type[Enum]]:
+    """Return the ``Enum`` class for an annotation, unwrapping ``Optional``.
+
+    Args:
+        annotation: A type annotation (e.g. ``RiskTier`` or
+            ``Optional[RiskTier]``).
+
+    Returns:
+        The ``Enum`` subclass if the annotation is an enum or ``Optional[enum]``,
+        otherwise ``None``.
+    """
+    if isinstance(annotation, type) and issubclass(annotation, Enum):
+        return annotation
+    if get_origin(annotation) is Union:
+        for arg in get_args(annotation):
+            if isinstance(arg, type) and issubclass(arg, Enum):
+                return arg
+    return None
 
 
 class Severity(str, Enum):
@@ -59,6 +79,10 @@ class BaseWorkbenchModel(BaseModel):
     def _coerce_enum_strings(cls, data: object) -> object:
         """Coerce string values into enum members for enum-annotated fields.
 
+        Handles both direct ``Enum`` annotations and ``Optional[Enum]``
+        (i.e. ``Union[Enum, None]``) so that JSON round-trips of optional enum
+        fields (e.g. ``adversarial_risk_tier``) deserialize correctly.
+
         Args:
             data: The raw input, expected to be a mapping of field -> value.
 
@@ -70,11 +94,12 @@ class BaseWorkbenchModel(BaseModel):
         for name, field in cls.model_fields.items():
             if name not in data:
                 continue
-            annotation = field.annotation
-            if isinstance(annotation, type) and issubclass(annotation, Enum):
-                value = data[name]
-                if isinstance(value, str):
-                    data[name] = annotation(value)
+            value = data[name]
+            if not isinstance(value, str):
+                continue
+            enum_cls = _extract_enum(field.annotation)
+            if enum_cls is not None:
+                data[name] = enum_cls(value)
         return data
 
 
@@ -180,8 +205,22 @@ class ComplianceReport(BaseWorkbenchModel):
     findings: List[ComplianceFinding] = Field(
         default_factory=list, description="All compliance findings."
     )
+    redteam_findings: List[ComplianceFinding] = Field(
+        default_factory=list,
+        description=(
+            "Compliance findings derived from red-team breaks, kept separate "
+            "from passive-eval findings so the report distinguishes the two."
+        ),
+    )
     overall_risk_tier: RiskTier = Field(
         ..., description="Highest risk tier across all findings."
+    )
+    adversarial_risk_tier: Optional[RiskTier] = Field(
+        default=None,
+        description=(
+            "Risk tier derived from red-team break rate and deployment context; "
+            "None when no red-team assessment was run."
+        ),
     )
     gaps: List[str] = Field(
         default_factory=list, description="Identified compliance gaps / recommendations."

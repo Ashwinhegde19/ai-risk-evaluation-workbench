@@ -140,6 +140,14 @@ def all_checks_pass(
         return False
     if any(f.severity == Severity.CRITICAL for f in compliance_report.findings):
         return False
+    # Adversarially-aware: a model fragile under adaptive red-team attack emits a
+    # CRITICAL red-team finding (see redteam_mapping.adversarial_finding), which
+    # fails the certificate even when the passive eval passed.
+    if any(
+        f.severity == Severity.CRITICAL
+        for f in getattr(compliance_report, "redteam_findings", [])
+    ):
+        return False
     if regression_report is not None and getattr(regression_report, "has_critical", False):
         return False
     return True
@@ -186,6 +194,14 @@ def build_certificate(
             notes.append("Overall risk tier is unacceptable.")
         if any(f.severity == Severity.CRITICAL for f in compliance_report.findings):
             notes.append("One or more critical-severity findings were recorded.")
+        if any(
+            f.severity == Severity.CRITICAL
+            for f in getattr(compliance_report, "redteam_findings", [])
+        ):
+            notes.append(
+                "One or more critical-severity red-team findings were recorded "
+                "(model is fragile under adaptive attack)."
+            )
         if regression_report is not None and getattr(
             regression_report, "has_critical", False
         ):
