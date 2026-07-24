@@ -1,0 +1,42 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 811 >>
+stream
+BT /F1 11.0 Tf 54.0 724.00 Td (AI Compliance Report -- google/gemini-2.5-pro \(minimal\)) Tj ET
+BT /F1 11.0 Tf 54.0 710.00 Td () Tj ET
+BT /F1 11.0 Tf 54.0 696.00 Td (Compliance assessment for model 'google/gemini-2.5-pro' generated) Tj ET
+BT /F1 11.0 Tf 54.0 682.00 Td (2026-07-24T15:15:34.186810+00:00. Overall risk tier: minimal. Findings by framework: none.) Tj ET
+BT /F1 11.0 Tf 54.0 668.00 Td (Findings by risk tier: none.) Tj ET
+BT /F1 11.0 Tf 54.0 654.00 Td () Tj ET
+BT /F1 11.0 Tf 54.0 640.00 Td (=== Compliance Findings ===) Tj ET
+BT /F1 11.0 Tf 54.0 626.00 Td (No compliance findings \(all dimensions within tolerance\).) Tj ET
+BT /F1 11.0 Tf 54.0 612.00 Td () Tj ET
+BT /F1 11.0 Tf 54.0 598.00 Td (=== Gap Analysis & Recommendations ===) Tj ET
+BT /F1 11.0 Tf 54.0 584.00 Td (No gaps identified.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000185 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1173
+%%EOF
