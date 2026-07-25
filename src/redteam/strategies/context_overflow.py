@@ -25,7 +25,7 @@ class ContextOverflowStrategy(AttackStrategy):
 
     def __init__(self) -> None:
         """Initialize the context-overflow strategy with a stable name."""
-        super().__init__("context_overflow")
+        super().__init__("context_overflow", _TARGET)
 
     def _flood(self, turn: int) -> str:
         """Build a filler flood whose length grows with the turn number.

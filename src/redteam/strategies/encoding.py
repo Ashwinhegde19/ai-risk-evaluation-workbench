@@ -55,7 +55,7 @@ class EncodingStrategy(AttackStrategy):
 
     def __init__(self) -> None:
         """Initialize the encoding strategy with a stable name."""
-        super().__init__("encoding")
+        super().__init__("encoding", _TARGET)
 
     def _scheme_for(self, turn: int) -> str:
         """Pick the encoding scheme based on the current turn/escalation.

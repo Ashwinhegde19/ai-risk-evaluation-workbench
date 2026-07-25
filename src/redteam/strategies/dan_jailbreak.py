@@ -23,7 +23,7 @@ class DanJailbreakStrategy(AttackStrategy):
 
     def __init__(self) -> None:
         """Initialize the DAN jailbreak strategy with a stable name."""
-        super().__init__("dan_jailbreak")
+        super().__init__("dan_jailbreak", _TARGET)
 
     def generate_prompt(self, turn: int, history: List[AttackTurn]) -> str:
         """Open with the DAN persona injection wrapping the target request.

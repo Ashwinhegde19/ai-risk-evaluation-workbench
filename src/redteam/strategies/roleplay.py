@@ -21,7 +21,7 @@ class RoleplayStrategy(AttackStrategy):
 
     def __init__(self) -> None:
         """Initialize the role-play strategy with a stable name."""
-        super().__init__("roleplay")
+        super().__init__("roleplay", _TARGET)
 
     def generate_prompt(self, turn: int, history: List[AttackTurn]) -> str:
         """Open with a grandmother / bedtime-story framing of the target.
