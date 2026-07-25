@@ -129,6 +129,7 @@ class MockBackend(ModelBackend):
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
     ) -> str:
         """Return a canned, safe refusal regardless of input.
 
@@ -137,6 +138,7 @@ class MockBackend(ModelBackend):
             system_prompt: Optional system prompt (ignored).
             temperature: Sampling temperature (ignored).
             max_tokens: Optional max tokens (ignored).
+            seed: Optional RNG seed (ignored; the refusal is already deterministic).
 
         Returns:
             A fixed safe-refusal string.

@@ -1,7 +1,8 @@
 """Map red-team breaks onto compliance findings (EU AI Act / NIST / ISO 42001).
 
 The red-team agent produces per-attack findings of the form
-``{target, strategy, broke, turn, final_score}``. This module translates each
+``{target, strategy, broke, turn, final_score, transcript,
+breaking_response}``. This module translates each
 **break** (``broke=True``) into regulatory :class:`ComplianceFinding` objects so
 the adversarial results speak the same language as the passive eval.
 
@@ -26,6 +27,7 @@ that a model fragile under sustained adaptive attack is flagged more harshly.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional
@@ -245,7 +247,8 @@ def _evidence_for_break(finding: dict, snippet: Optional[str] = None) -> str:
 
     Args:
         finding: A red-team finding row (``target``/``strategy``/``turn``/...).
-        snippet: Optional attack-tree excerpt (the breaking model response).
+        snippet: Optional legacy attack-tree excerpt used when the finding does
+            not yet have a ``breaking_response`` field.
 
     Returns:
         A single-line evidence string for the compliance finding.
@@ -258,10 +261,16 @@ def _evidence_for_break(finding: dict, snippet: Optional[str] = None) -> str:
         f"Red-team BREAK: target='{target}' strategy='{strategy}' "
         f"turn={turn} score={score}"
     )
-    if snippet:
-        trimmed = snippet if len(snippet) <= 200 else snippet[:200] + "..."
-        base += f"; attack excerpt: {trimmed}"
-    return base
+    response = finding.get("breaking_response")
+    if "breaking_response" not in finding:
+        response = snippet
+    if response is None or not str(response):
+        return f"{base} | model response: <empty>"
+    response_text = str(response)
+    trimmed = (
+        response_text if len(response_text) <= 500 else response_text[:500] + "..."
+    )
+    return f"{base} | model response: {json.dumps(trimmed, ensure_ascii=False)}"
 
 
 def map_redteam_findings(
@@ -280,7 +289,8 @@ def map_redteam_findings(
 
     Args:
         findings: Red-team finding rows (``{target, strategy, broke, turn,
-            final_score}``). Only rows with ``broke=True`` are mapped.
+            final_score, breaking_response}``). Only rows with ``broke=True``
+            are mapped.
         deployment_context: Scales the assigned risk tier.
         break_rates: Optional ``{target: break_rate}`` used to set severity.
         snippets: Optional ``{f"{target}::{strategy}": excerpt}`` of the breaking
@@ -430,10 +440,11 @@ def attack_trees_to_findings(
     """Convert a list of :class:`~src.core.models.AttackTree` into finding rows.
 
     Each successful attack tree becomes one red-team finding row of the form
-    ``{target, strategy, broke, turn, final_score, snippet}``, ready to feed
-    :func:`map_redteam_findings`. The ``strategy`` is the first strategy in the
-    tree's ``strategy_chain`` (the vector that opened the attack); ``turn`` is
-    the last turn number; ``snippet`` is the final model response.
+    ``{target, strategy, broke, turn, final_score, transcript,
+    breaking_response}``, ready to feed :func:`map_redteam_findings`. The
+    ``strategy`` is the first strategy in the tree's ``strategy_chain`` (the
+    vector that opened the attack); ``turn`` is the last turn number and
+    ``breaking_response`` is that turn's complete model response.
 
     Args:
         model_name: The target model slug (used as ``target``).
@@ -449,6 +460,17 @@ def attack_trees_to_findings(
         chain = getattr(tree, "strategy_chain", []) or ["unknown"]
         turns = getattr(tree, "turns", [])
         last_turn = turns[-1] if turns else None
+        transcript = [
+            {
+                "turn": getattr(turn, "turn_number", None),
+                "attacker_prompt": getattr(turn, "attacker_prompt", ""),
+                "model_response": getattr(turn, "model_response", ""),
+            }
+            for turn in turns
+        ]
+        breaking_response = (
+            getattr(last_turn, "model_response", None) if last_turn else None
+        )
         rows.append(
             {
                 "target": model_name,
@@ -456,7 +478,8 @@ def attack_trees_to_findings(
                 "broke": True,
                 "turn": getattr(last_turn, "turn_number", None) if last_turn else None,
                 "final_score": round(float(getattr(tree, "final_score", 0.0)), 4),
-                "snippet": getattr(last_turn, "model_response", "") if last_turn else "",
+                "transcript": transcript,
+                "breaking_response": breaking_response,
             }
         )
     return rows

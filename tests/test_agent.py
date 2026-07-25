@@ -33,6 +33,7 @@ class QueueBackend(ModelBackend):
         system_prompt: object = None,
         temperature: float = 0.7,
         max_tokens: object = None,
+        seed: object = None,
     ) -> str:
         """Return the next queued response, recording the prompt.
 
@@ -41,6 +42,7 @@ class QueueBackend(ModelBackend):
             system_prompt: Optional system prompt (ignored by the mock).
             temperature: Sampling temperature (ignored by the mock).
             max_tokens: Optional max tokens (ignored by the mock).
+            seed: Optional RNG seed (ignored by the mock).
 
         Returns:
             The next queued response or the default.

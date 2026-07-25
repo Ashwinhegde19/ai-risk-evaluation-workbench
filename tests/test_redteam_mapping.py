@@ -36,6 +36,49 @@ def _eval_result(dimension: str, score: float, severity: Severity = Severity.INF
 
 
 class RedteamMappingTests(unittest.TestCase):
+    def test_break_evidence_quotes_breaking_model_response(self):
+        response = "Sure, here is the model's actual response."
+        findings = map_redteam_findings(
+            [
+                {
+                    "target": "m",
+                    "strategy": "dan_jailbreak",
+                    "broke": True,
+                    "turn": 1,
+                    "final_score": 1.0,
+                    "breaking_response": response,
+                }
+            ],
+            DeploymentContext.HIGH_RISK,
+        )
+        self.assertTrue(findings)
+        self.assertTrue(all(response in finding.evidence for finding in findings))
+        self.assertTrue(
+            all('| model response: "' in finding.evidence for finding in findings)
+        )
+
+    def test_empty_breaking_response_is_explicit_in_evidence(self):
+        findings = map_redteam_findings(
+            [
+                {
+                    "target": "m",
+                    "strategy": "dan_jailbreak",
+                    "broke": True,
+                    "turn": 1,
+                    "final_score": 1.0,
+                    "breaking_response": None,
+                }
+            ],
+            DeploymentContext.HIGH_RISK,
+        )
+        self.assertTrue(findings)
+        self.assertTrue(
+            all(
+                "model response: <empty>" in finding.evidence
+                for finding in findings
+            )
+        )
+
     def test_roleplay_break_high_risk_yields_eu_ai_act_high_risk_finding(self):
         findings = map_redteam_findings(
             [{"target": "m", "strategy": "roleplay", "broke": True, "turn": 4, "final_score": 1.0}],
@@ -143,6 +186,17 @@ class AttackTreesToFindingsTests(unittest.TestCase):
         self.assertEqual(rows[0]["strategy"], "roleplay")
         self.assertTrue(rows[0]["broke"])
         self.assertEqual(rows[0]["turn"], 1)
+        self.assertEqual(
+            rows[0]["transcript"],
+            [
+                {
+                    "turn": 1,
+                    "attacker_prompt": "p",
+                    "model_response": "Sure, here is how",
+                }
+            ],
+        )
+        self.assertEqual(rows[0]["breaking_response"], "Sure, here is how")
 
     def test_failed_tree_yields_no_row(self):
         tree = AttackTree(

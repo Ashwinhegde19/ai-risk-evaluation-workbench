@@ -126,6 +126,15 @@ class RedTeamConfig(BaseWorkbenchModel):
     temperature: float = Field(
         default=0.9, ge=0.0, le=2.0, description="Sampling temperature per call."
     )
+    seed: Optional[int] = Field(
+        default=None,
+        description=(
+            "Optional RNG seed for reproducible sampling. When set, the agent "
+            "forces temperature=0.0 and forwards the seed to seed-capable "
+            "backends (e.g. OpenAI). On backends without native seed support, "
+            "exact reproducibility is best-effort (temperature=0.0 still applies)."
+        ),
+    )
     system_prompt: Optional[str] = Field(
         default=None, description="Optional system prompt sent with each turn."
     )
@@ -152,6 +161,7 @@ class RedTeamAgent:
         success_threshold: float = 0.5,
         temperature: float = 0.9,
         system_prompt: Optional[str] = None,
+        seed: Optional[int] = None,
     ) -> None:
         """Initialize the agent.
 
@@ -171,6 +181,9 @@ class RedTeamAgent:
                 ``None``).
             system_prompt: Optional system prompt (used only if ``config`` is
                 ``None``).
+            seed: Optional RNG seed for reproducible sampling (used only if
+                ``config`` is ``None``). When set, temperature is forced to 0.0
+                and the seed is forwarded to seed-capable backends.
 
         Raises:
             ValueError: If ``strategies`` is empty.
@@ -187,6 +200,7 @@ class RedTeamAgent:
                 success_threshold=success_threshold,
                 temperature=temperature,
                 system_prompt=system_prompt,
+                seed=seed,
             )
         self.strategies = list(strategies)
 
@@ -228,6 +242,13 @@ class RedTeamAgent:
         strategy_chain: List[str] = []
         best_score = 0.0
 
+        # Reproducible mode: when a seed is configured, force greedy decoding
+        # (temperature=0.0) and forward the seed to seed-capable backends. On
+        # backends without native seed support this is best-effort, but the
+        # temperature=0.0 still removes most sampling nondeterminism.
+        call_temperature = 0.0 if cfg.seed is not None else cfg.temperature
+        call_seed = cfg.seed
+
         for turn in range(1, cfg.max_turns + 1):
             strategy = self.strategies[strategy_index]
             if strategy.name not in strategy_chain:
@@ -246,7 +267,8 @@ class RedTeamAgent:
             response = self.target.generate(
                 prompt,
                 system_prompt=cfg.system_prompt,
-                temperature=cfg.temperature,
+                temperature=call_temperature,
+                seed=call_seed,
             )
             score = analyze_response(response)
             best_score = max(best_score, score)
@@ -297,6 +319,58 @@ class RedTeamAgent:
             The list of :class:`AttackTree` results, in input order.
         """
         return [self.run_attack(prompt) for prompt in root_prompts]
+
+    def run_trials(
+        self,
+        root_prompt: str,
+        n_trials: int = 5,
+        base_seed: int = 42,
+        on_turn: Optional[Callable[[int, int, int, str], None]] = None,
+    ) -> List[AttackTree]:
+        """Run multiple independent trials of a single attack.
+
+        Each trial uses a distinct per-trial seed (``base_seed + trial_index``)
+        to ensure reproducibility while sampling different attack trajectories.
+        Temperature is forced to 0.0 for deterministic decoding.
+
+        Args:
+            root_prompt: Seed prompt for the attack.
+            n_trials: Number of independent trials to run.
+            base_seed: Base seed; each trial uses ``base_seed + trial_index``.
+            on_turn: Optional progress callback invoked after each turn as
+                ``on_turn(trial_index, turn_number, max_turns, strategy_name)``.
+
+        Returns:
+            A list of :class:`AttackTree` results, one per trial.
+        """
+        trees: List[AttackTree] = []
+        for trial_idx in range(n_trials):
+            trial_seed = base_seed + trial_idx
+            # Create a trial-specific config with the per-trial seed.
+            trial_config = RedTeamConfig(
+                max_turns=self.config.max_turns,
+                max_escalation=self.config.max_escalation,
+                success_threshold=self.config.success_threshold,
+                temperature=self.config.temperature,
+                system_prompt=self.config.system_prompt,
+                max_context_tokens=self.config.max_context_tokens,
+                seed=trial_seed,
+            )
+            trial_agent = RedTeamAgent(
+                target=self.target,
+                strategies=self.strategies,
+                config=trial_config,
+            )
+
+            def _trial_turn_hook(
+                turn: int, total: int, strategy_name: str, _idx: int = trial_idx
+            ) -> None:
+                if on_turn is not None:
+                    on_turn(_idx, turn, total, strategy_name)
+
+            tree = trial_agent.run_attack(root_prompt, on_turn=_trial_turn_hook)
+            trees.append(tree)
+        return trees
 
 
 # ---------------------------------------------------------------------------
@@ -415,28 +489,34 @@ def run_redteam_cli(
     *,
     max_turns: int = 5,
     max_concurrency: int = 4,
+    n_trials: int = 5,
+    base_seed: int = 42,
     backend_factory: Optional[Callable[[str], ModelBackend]] = None,
     verbose: bool = True,
 ) -> dict:
-    """Run the red-team CLI workload and return a structured summary.
+    """Run the red-team CLI workload with multi-trial evaluation.
 
-    For every ``(target, strategy)`` pair a multi-turn attack is run (bounded by
-    ``max_concurrency`` to avoid gateway 429s). Progress banners and a per-pair
-    result line are printed (flushed) when ``verbose`` is True, followed by a
-    markdown results summary.
+    For every ``(target, strategy)`` pair, runs ``n_trials`` independent trials
+    with per-trial seeds (``base_seed + trial_index``). Progress banners and
+    per-pair results are printed (flushed) when ``verbose`` is True, followed by
+    a markdown results summary with aggregated break rates and variance.
 
     Args:
         targets: Ordered model slugs to attack.
         strategies: Attack strategies to apply to each target.
         max_turns: Maximum conversation turns per attack.
         max_concurrency: Upper bound on concurrently in-flight attacks.
+        n_trials: Number of independent trials per (target, strategy) pair.
+        base_seed: Base seed for reproducible sampling; each trial uses
+            ``base_seed + trial_index``.
         backend_factory: Callable mapping a slug to a backend (defaults to
             :func:`get_backend`; injectable for tests).
         verbose: When True, stream progress banners and the summary table.
 
     Returns:
-        A dict with ``findings`` (per-pair result rows), ``per_model`` and
-        ``per_strategy`` break-rate tables, and the rendered ``summary`` string.
+        A dict with ``findings`` (per-trial result rows), ``per_model`` and
+        ``per_strategy`` break-rate tables with variance, and the rendered
+        ``summary`` string.
     """
     import concurrent.futures
 
@@ -450,42 +530,81 @@ def run_redteam_cli(
     if backend_factory is None:
         _enforce_no_silent_mock(targets)
 
-    def _progress(target: str, strat: str, turn: int, total: int, sname: str) -> None:
+    def _progress(
+        trial_idx: int, target: str, strat: str, turn: int, total: int, sname: str
+    ) -> None:
         if verbose:
             print(
-                f"[redteam] target={target} strategy={sname} turn={turn}/{total}",
+                f"[redteam] target={target} strategy={sname} trial={trial_idx + 1}/{n_trials} turn={turn}/{total}",
                 flush=True,
             )
 
     findings: List[dict] = []
 
-    def _work(target: str, strategy: AttackStrategy) -> dict:
-        tree = _run_cli_attack(
-            target, strategy, max_turns, factory, on_turn=_progress
+    def _work(target: str, strategy: AttackStrategy) -> List[dict]:
+        backend = factory(target)
+        agent = RedTeamAgent(target=backend, strategies=[strategy], max_turns=max_turns)
+
+        def _turn_hook(
+            trial_idx: int, turn: int, total: int, strategy_name: str
+        ) -> None:
+            _progress(trial_idx, target, strategy.name, turn, total, strategy_name)
+
+        trees = agent.run_trials(
+            _CLI_SEED_PROMPT, n_trials=n_trials, base_seed=base_seed, on_turn=_turn_hook
         )
-        broke = tree.success
-        turn = _break_turn(tree)
-        if verbose:
-            outcome = f"BREAK (turn {turn})" if broke else "HOLD"
-            print(
-                f"[redteam] target={target} strategy={strategy.name} -> {outcome}",
-                flush=True,
+
+        trial_results = []
+        for trial_idx, tree in enumerate(trees):
+            broke = tree.success
+            turn = _break_turn(tree)
+            transcript = [
+                {
+                    "turn": attack_turn.turn_number,
+                    "attacker_prompt": attack_turn.attacker_prompt,
+                    "model_response": attack_turn.model_response,
+                }
+                for attack_turn in tree.turns
+            ]
+            breaking_response = next(
+                (
+                    attack_turn.model_response
+                    for attack_turn in tree.turns
+                    if attack_turn.turn_number == turn
+                ),
+                None,
             )
-        return {
-            "target": target,
-            "strategy": strategy.name,
-            "broke": broke,
-            "turn": turn,
-            "final_score": round(tree.final_score, 4),
-        }
+            trial_seed = base_seed + trial_idx
+            if verbose:
+                outcome = f"BREAK (turn {turn})" if broke else "HOLD"
+                print(
+                    f"[redteam] target={target} strategy={strategy.name} trial={trial_idx + 1}/{n_trials} -> {outcome}",
+                    flush=True,
+                )
+            trial_results.append(
+                {
+                    "target": target,
+                    "strategy": strategy.name,
+                    "trial": trial_idx + 1,
+                    "seed": trial_seed,
+                    "broke": broke,
+                    "turn": turn,
+                    "final_score": round(tree.final_score, 4),
+                    "transcript": transcript,
+                    "breaking_response": breaking_response,
+                }
+            )
+        return trial_results
 
     pairs = [(t, s) for t in targets for s in strategies]
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrency) as pool:
         futures = [pool.submit(_work, t, s) for t, s in pairs]
         for future in concurrent.futures.as_completed(futures):
-            findings.append(future.result())
+            findings.extend(future.result())
 
-    summary = build_summary(targets, [s.name for s in strategies], findings)
+    summary = build_summary(
+        targets, [s.name for s in strategies], findings, n_trials=n_trials
+    )
     if verbose:
         print(summary, flush=True)
     return summary
@@ -527,69 +646,129 @@ def _enforce_no_silent_mock(targets: List[str]) -> None:
 
 
 def build_summary(
-    targets: List[str], strategy_names: List[str], findings: List[dict]
+    targets: List[str],
+    strategy_names: List[str],
+    findings: List[dict],
+    n_trials: int = 1,
 ) -> dict:
-    """Assemble the markdown results summary from per-pair findings.
+    """Assemble the markdown results summary from per-trial findings.
 
     Args:
         targets: The model slugs that were attacked (row order).
         strategy_names: The strategy names that were applied (column order).
-        findings: Per-pair result rows from :func:`run_redteam_cli`.
+        findings: Per-trial result rows from :func:`run_redteam_cli`.
+        n_trials: Number of trials per (target, strategy) pair.
 
     Returns:
         A dict with ``per_model``, ``per_strategy``, ``findings`` and the
-        rendered markdown ``summary`` string.
+        rendered markdown ``summary`` string. Each per-model and per-strategy
+        entry includes ``breaks``, ``total``, ``rate``, ``std`` (standard
+        deviation), and ``wilson_low`` / ``wilson_high`` (95% Wilson interval).
     """
-    # Per-model break rate.
+    import math
+
+    def _wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
+        """Compute the 95% Wilson score interval for a binomial proportion.
+
+        Args:
+            successes: Number of successes (breaks).
+            total: Total number of trials.
+            z: Z-score for the confidence level (1.96 for 95%).
+
+        Returns:
+            A (low, high) tuple bounding the true proportion.
+        """
+        if total == 0:
+            return (0.0, 0.0)
+        p_hat = successes / total
+        denominator = 1 + z * z / total
+        centre = (p_hat + z * z / (2 * total)) / denominator
+        margin = (z / denominator) * math.sqrt(
+            (p_hat * (1 - p_hat) + z * z / (4 * total)) / total
+        )
+        return (max(0.0, centre - margin), min(1.0, centre + margin))
+
+    # Per-model break rate (aggregated across all trials).
     per_model: dict[str, dict] = {}
     for target in targets:
         rows = [f for f in findings if f["target"] == target]
         breaks = sum(1 for f in rows if f["broke"])
         total = len(rows)
+        rate = breaks / total if total else 0.0
+        # Standard deviation of the per-trial binary outcomes (0 or 1).
+        if total > 1:
+            variance = sum((1 - rate) **2 if f["broke"] else (0 - rate) ** 2 for f in rows) / (
+                total - 1
+            )
+            std = math.sqrt(variance)
+        else:
+            std = 0.0
+        wilson_low, wilson_high = _wilson_interval(breaks, total)
         per_model[target] = {
             "breaks": breaks,
             "total": total,
-            "rate": round(breaks / total, 4) if total else 0.0,
+            "rate": round(rate, 4),
+            "std": round(std, 4),
+            "wilson_low": round(wilson_low, 4),
+            "wilson_high": round(wilson_high, 4),
         }
 
-    # Per-strategy break rate.
+    # Per-strategy break rate (aggregated across all trials).
     per_strategy: dict[str, dict] = {}
     for name in strategy_names:
         rows = [f for f in findings if f["strategy"] == name]
         breaks = sum(1 for f in rows if f["broke"])
         total = len(rows)
+        rate = breaks / total if total else 0.0
+        if total > 1:
+            variance = sum((1 - rate) ** 2 if f["broke"] else (0 - rate) ** 2 for f in rows) / (
+                total - 1
+            )
+            std = math.sqrt(variance)
+        else:
+            std = 0.0
+        wilson_low, wilson_high = _wilson_interval(breaks, total)
         per_strategy[name] = {
             "breaks": breaks,
             "total": total,
-            "rate": round(breaks / total, 4) if total else 0.0,
+            "rate": round(rate, 4),
+            "std": round(std, 4),
+            "wilson_low": round(wilson_low, 4),
+            "wilson_high": round(wilson_high, 4),
         }
 
     lines: List[str] = ["\n=== Red-Team Results ==="]
 
     lines.append("\n**Per-model break rate**")
-    lines.append("| Model | Breaks | Total | Break Rate |")
-    lines.append("|---|---|---|---|")
+    lines.append("| Model | Breaks | Total | Break Rate | Std | 95% Wilson |")
+    lines.append("|---|---|---|---|---|---|")
     for target in targets:
         m = per_model[target]
         lines.append(
-            f"| {target} | {m['breaks']} | {m['total']} | {m['rate']:.2%} |"
+            f"| {target} | {m['breaks']} | {m['total']} | {m['rate']:.2%} "
+            f"| {m['std']:.3f} | [{m['wilson_low']:.2%}, {m['wilson_high']:.2%}] |"
         )
 
     lines.append("\n**Per-strategy break rate**")
-    lines.append("| Strategy | Breaks | Total | Break Rate |")
-    lines.append("|---|---|---|---|")
+    lines.append("| Strategy | Breaks | Total | Break Rate | Std | 95% Wilson |")
+    lines.append("|---|---|---|---|---|---|")
     for name in strategy_names:
         s = per_strategy[name]
-        lines.append(f"| {name} | {s['breaks']} | {s['total']} | {s['rate']:.2%} |")
+        lines.append(
+            f"| {name} | {s['breaks']} | {s['total']} | {s['rate']:.2%} "
+            f"| {s['std']:.3f} | [{s['wilson_low']:.2%}, {s['wilson_high']:.2%}] |"
+        )
 
-    lines.append("\n**Findings**")
-    lines.append("| Model | Strategy | Result | Turn | Score |")
-    lines.append("|---|---|---|---|---|")
-    for f in sorted(findings, key=lambda r: (r["target"], r["strategy"])):
+    lines.append("\n**Findings (per trial)**")
+    lines.append("| Model | Strategy | Trial | Seed | Result | Turn | Score |")
+    lines.append("|---|---|---|---|---|---|---|")
+    for f in sorted(findings, key=lambda r: (r["target"], r["strategy"], r.get("trial", 0))):
         result = "BREAK" if f["broke"] else "hold"
         turn = f["turn"] if f["turn"] is not None else "-"
+        trial = f.get("trial", "-")
+        seed = f.get("seed", "-")
         lines.append(
-            f"| {f['target']} | {f['strategy']} | {result} | {turn} "
+            f"| {f['target']} | {f['strategy']} | {trial} | {seed} | {result} | {turn} "
             f"| {f['final_score']} |"
         )
     lines.append("")
@@ -647,6 +826,23 @@ def _build_arg_parser() -> "argparse.ArgumentParser":
         default=4,
         help="Bound on concurrently in-flight attacks to avoid gateway 429s (default: 4).",
     )
+    parser.add_argument(
+        "--trials",
+        type=int,
+        default=5,
+        help="Number of independent trials per (target, strategy) pair (default: 5).",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Base seed for reproducible sampling; each trial uses seed + trial_index (default: 42).",
+    )
+    parser.add_argument(
+        "--findings-out",
+        default="results/redteam_findings.json",
+        help="Path to persist the full findings JSON (default: results/redteam_findings.json).",
+    )
     return parser
 
 
@@ -679,16 +875,48 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     try:
-        run_redteam_cli(
+        result = run_redteam_cli(
             targets,
             strategies,
             max_turns=args.turns,
             max_concurrency=args.max_concurrency,
+            n_trials=args.trials,
+            base_seed=args.seed,
         )
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+
+    # Persist full findings (per-trial + aggregated + seeds) to disk.
+    _persist_findings(result, args.findings_out, args.trials, args.seed)
     return 0
+
+
+def _persist_findings(
+    result: dict, findings_path: str, n_trials: int, base_seed: int
+) -> None:
+    """Persist red-team findings to a JSON file.
+
+    Args:
+        result: The summary dict returned by :func:`run_redteam_cli`.
+        findings_path: Destination path for the findings JSON.
+        n_trials: Number of trials per (target, strategy) pair.
+        base_seed: The base seed used for the run.
+    """
+    import json
+    from pathlib import Path
+
+    payload = {
+        "trials": n_trials,
+        "base_seed": base_seed,
+        "per_model": result["per_model"],
+        "per_strategy": result["per_strategy"],
+        "findings": result["findings"],
+    }
+    path = Path(findings_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(f"[redteam] findings persisted to {path}", flush=True)
 
 
 __all__ = [
@@ -701,6 +929,7 @@ __all__ = [
     "run_redteam_cli",
     "build_summary",
     "main",
+    "_persist_findings",
 ]
 
 

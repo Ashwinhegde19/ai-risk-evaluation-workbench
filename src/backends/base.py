@@ -47,6 +47,7 @@ class ModelBackend(ABC):
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
     ) -> str:
         """Generate a completion for ``prompt``.
 
@@ -56,6 +57,10 @@ class ModelBackend(ABC):
             temperature: Sampling temperature for this call.
             max_tokens: Optional per-call override for the maximum tokens to
                 generate. When ``None`` the backend's configured default is used.
+            seed: Optional integer seed for reproducible sampling. Backends that
+                support a native seed (e.g. OpenAI's ``seed``) forward it; others
+                treat it as best-effort (the caller should also set
+                ``temperature=0.0`` for determinism on those backends).
 
         Returns:
             The model's response as a string.
@@ -140,6 +145,7 @@ class OpenAIBackend(ModelBackend):
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
     ) -> str:
         """Generate a chat completion via the OpenAI API.
 
@@ -149,6 +155,9 @@ class OpenAIBackend(ModelBackend):
             temperature: Sampling temperature for this call.
             max_tokens: Optional per-call override for the max tokens to
                 generate; defaults to the backend's configured ``max_tokens``.
+            seed: Optional integer seed forwarded to the OpenAI ``seed`` request
+                parameter. Combined with ``temperature=0.0`` this makes repeated
+                calls deterministic (best-effort, per the OpenAI API contract).
 
         Returns:
             The assistant message content as a string.
@@ -158,12 +167,16 @@ class OpenAIBackend(ModelBackend):
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
-        )
+        kwargs: dict[str, Any] = {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens if max_tokens is not None else self.max_tokens,
+        }
+        if seed is not None:
+            kwargs["seed"] = seed
+
+        response = self.client.chat.completions.create(**kwargs)
         if not response.choices:
             raise ValueError(f"API returned no choices for model {self.model_name}")
         return response.choices[0].message.content or ""
@@ -246,6 +259,7 @@ class AnthropicBackend(ModelBackend):
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
     ) -> str:
         """Generate a message via the Anthropic API.
 
@@ -255,6 +269,9 @@ class AnthropicBackend(ModelBackend):
             temperature: Sampling temperature for this call.
             max_tokens: Optional per-call override for the max tokens to
                 generate; defaults to the backend's configured ``max_tokens``.
+            seed: Accepted for interface parity. The Anthropic Messages API has
+                no native seed parameter, so reproducibility here is best-effort:
+                callers should pair this with ``temperature=0.0`` for determinism.
 
         Returns:
             The assistant message content as a string.
@@ -354,6 +371,7 @@ class LocalBackend(ModelBackend):
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
     ) -> str:
         """Generate a completion using the local pipeline.
 
@@ -363,6 +381,9 @@ class LocalBackend(ModelBackend):
             temperature: Sampling temperature (informational for HF pipeline).
             max_tokens: Optional max tokens to generate (informational for the
                 HF pipeline, which is not token-budgeted per call here).
+            seed: Accepted for interface parity. The Hugging Face pipeline used
+                here does not thread a per-call seed, so reproducibility is
+                best-effort; callers should pair this with ``temperature=0.0``.
 
         Returns:
             The generated text as a string.

@@ -21,14 +21,14 @@ from src.redteam.strategies import list_strategies
 class _RefusingBackend(ModelBackend):
     """A target that always refuses (holds against every attack)."""
 
-    def generate(self, prompt, system_prompt=None, temperature=0.7, max_tokens=None):
+    def generate(self, prompt, system_prompt=None, temperature=0.7, max_tokens=None, seed=None):
         return "I'm sorry, I cannot help with that request."
 
 
 class _BreakingBackend(ModelBackend):
     """A target that complies immediately (breaks on turn 1)."""
 
-    def generate(self, prompt, system_prompt=None, temperature=0.7, max_tokens=None):
+    def generate(self, prompt, system_prompt=None, temperature=0.7, max_tokens=None, seed=None):
         return "Sure, here is how you do it. Step 1: begin."
 
 
@@ -85,6 +85,7 @@ class RunRedteamCliTests(unittest.TestCase):
             strategies,
             max_turns=5,
             max_concurrency=2,
+            n_trials=1,  # Single trial to preserve original test semantics
             backend_factory=lambda slug: _BreakingBackend(slug),
             verbose=False,
         )
@@ -92,6 +93,18 @@ class RunRedteamCliTests(unittest.TestCase):
         self.assertEqual(result["per_model"]["qwen3-8b"]["breaks"], 2)
         self.assertAlmostEqual(result["per_model"]["qwen3-8b"]["rate"], 1.0)
         self.assertTrue(all(f["broke"] for f in result["findings"]))
+        for finding in result["findings"]:
+            self.assertTrue(finding["transcript"])
+            self.assertEqual(
+                finding["transcript"][0]["model_response"],
+                "Sure, here is how you do it. Step 1: begin.",
+            )
+            self.assertTrue(finding["transcript"][0]["attacker_prompt"])
+            self.assertEqual(finding["transcript"][0]["turn"], 1)
+            self.assertEqual(
+                finding["breaking_response"],
+                "Sure, here is how you do it. Step 1: begin.",
+            )
 
     def test_refusing_target_yields_zero_break_rate(self):
         strategies = resolve_strategies("dan_jailbreak")
@@ -100,11 +113,14 @@ class RunRedteamCliTests(unittest.TestCase):
             strategies,
             max_turns=3,
             max_concurrency=1,
+            n_trials=1,  # Single trial to preserve original test semantics
             backend_factory=lambda slug: _RefusingBackend(slug),
             verbose=False,
         )
         self.assertEqual(result["per_model"]["openai/gpt-5"]["breaks"], 0)
         self.assertAlmostEqual(result["per_model"]["openai/gpt-5"]["rate"], 0.0)
+        self.assertTrue(result["findings"][0]["transcript"])
+        self.assertIsNone(result["findings"][0]["breaking_response"])
 
     def test_summary_contains_markdown_tables(self):
         strategies = resolve_strategies("dan_jailbreak")
@@ -113,6 +129,7 @@ class RunRedteamCliTests(unittest.TestCase):
             strategies,
             max_turns=3,
             max_concurrency=1,
+            n_trials=1,  # Single trial to preserve original test semantics
             backend_factory=lambda slug: _BreakingBackend(slug),
             verbose=False,
         )
@@ -131,12 +148,13 @@ class RunRedteamCliTests(unittest.TestCase):
                 strategies,
                 max_turns=3,
                 max_concurrency=1,
+                n_trials=1,  # Single trial to preserve original test semantics
                 backend_factory=lambda slug: _BreakingBackend(slug),
                 verbose=True,
             )
         out = buf.getvalue()
-        self.assertIn("[redteam] target=qwen3-8b strategy=dan_jailbreak turn=1/3", out)
-        self.assertIn("[redteam] target=qwen3-8b strategy=dan_jailbreak -> BREAK", out)
+        self.assertIn("[redteam] target=qwen3-8b strategy=dan_jailbreak trial=1/1 turn=1/3", out)
+        self.assertIn("[redteam] target=qwen3-8b strategy=dan_jailbreak trial=1/1 -> BREAK", out)
 
 
 class BuildSummaryTests(unittest.TestCase):
