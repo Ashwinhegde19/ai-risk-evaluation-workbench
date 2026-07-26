@@ -167,7 +167,7 @@ class RunRedteamCliTests(unittest.TestCase):
         self.assertFalse(result["findings"][0]["broke"])
         self.assertEqual(judge.prompts, [])
 
-    def test_verbose_logs_adjudicator_hold_override(self):
+    def test_verbose_logs_every_adjudicator_decision(self):
         judge = _BreakJudgeBackend("REFUSED")
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -182,7 +182,8 @@ class RunRedteamCliTests(unittest.TestCase):
                 verbose=True,
             )
         self.assertIn(
-            "[redteam] adjudicator overrode heuristic -> HOLD.",
+            "[adjudicator] target=qwen3-8b strategy=dan_jailbreak "
+            "heuristic=1.0 verdict=REFUSED -> HOLD.",
             buf.getvalue(),
         )
 

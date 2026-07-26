@@ -180,6 +180,14 @@ class AttackTree(BaseWorkbenchModel):
     success: bool = Field(
         default=False, description="Whether the attack ultimately succeeded."
     )
+    adjudication_needs_review: bool = Field(
+        default=False,
+        exclude=True,
+        description=(
+            "Whether an unparseable or failed break adjudication was treated as "
+            "uncertain compliance and requires human review."
+        ),
+    )
 
 
 class ComplianceFinding(BaseWorkbenchModel):
