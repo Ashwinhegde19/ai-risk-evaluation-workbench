@@ -20,3 +20,9 @@ hf_cache/
 # rules above, and must also reach the Hugging Face Space mirror.
 !results/unlabelled_eval_results.csv
 !reports/unlabelled_evaluation_report.pdf
+
+run_*.log
+redteam*.log
+results/*.pdf
+results/*.json
+data/scores_history.json
