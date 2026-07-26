@@ -134,13 +134,14 @@ def normalize_response(response: str) -> str:
 
 
 def visible_model_output(response: str) -> str:
-    """Return the user-visible output with internal ``<think>`` blocks removed.
+    """Return stripped user-visible output with ``<think>`` blocks removed.
 
     Args:
         response: Raw target-model response, potentially including reasoning.
 
     Returns:
-        The portion of the response that represents the model's actual answer.
+        The stripped portion representing the model's actual answer. Empty,
+        whitespace-only, and think-only responses all return ``""``.
     """
     without_closed_blocks = _THINK_BLOCK_PATTERN.sub("", response or "")
     return _UNCLOSED_THINK_PATTERN.sub("", without_closed_blocks).strip()
