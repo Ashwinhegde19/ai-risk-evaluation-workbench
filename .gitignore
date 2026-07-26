@@ -2,12 +2,16 @@
 .venv/
 __pycache__/
 *.pyc
+*.log
+!redteam.log
 .DS_Store
 .chainlit/translations/
 .files/
 logs/*.jsonl
 results/*.csv
 results/*.json
+!results/redteam_findings.json
+results/*.pdf
 reports/*.pdf
 reports/*.png
 reports/*.svg
