@@ -1,0 +1,95 @@
+name: Eval Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Model identifier to evaluate"
+        required: false
+        default: "mock-gpt"
+      suite:
+        description: "Eval suite identifier"
+        required: false
+        default: "full"
+
+# Allow the job to post PR comments and read/commit the score history.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  evaluate:
+    name: Evaluate model & detect regressions
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Full history so the score-history baseline can be committed back.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Install only the dependencies the pipeline and tests require. The
+      # pipeline runs in --mock mode (deterministic, network-free), so the
+      # heavy ML packages (torch/transformers) are intentionally not needed.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pydantic>=2,<2.11" pyyaml pytest
+
+      - name: Run test suite
+        run: python -m pytest tests/ -q
+
+      - name: Run evaluation pipeline (mock, offline)
+        id: eval
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          MODEL="${{ github.event.inputs.model || 'mock-gpt' }}"
+          SUITE="${{ github.event.inputs.suite || 'full' }}"
+          python -m src.pipeline.run \
+            --model "$MODEL" \
+            --suite "$SUITE" \
+            --mock \
+            --history data/scores_history.json \
+            --report-dir results \
+            --post-comment
+
+      # Upload the generated compliance report (JSON + PDF), certificate, and
+      # the updated score history for inspection / cross-run regression.
+      - name: Upload report & certificate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-artifacts
+          path: |
+            results/
+            data/scores_history.json
+          if-no-files-found: warn
+
+      # On pushes to main, persist the updated score history so the next run
+      # can detect regressions against it. The default GITHUB_TOKEN does not
+      # re-trigger workflows, so this will not cause a CI loop.
+      - name: Persist score history baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/scores_history.json
+          if git diff --cached --quiet; then
+            echo "No score-history changes to commit."
+          else
+            git commit -m "ci(pipeline): update score history baseline"
+            git push
+          fi

@@ -1,10 +1,14 @@
+# Pinning CPU-only torch to avoid large CUDA wheels on CPU-only Space workers.
+# The Hugging Face Space runs on CPU; transformers will still work with CPU torch.
 chainlit==2.3.0
 pydantic>=2,<2.11
 python-socketio==5.16.2
 python-engineio==4.13.2
 openai>=1.40.0
-transformers>=4.44.0
-torch>=2.3.0
+# Pin transformers to a version known to work with our torch pin.
+transformers==4.44.2
+# CPU-only torch prevents 2GB+ CUDA wheel downloads in CPU Space environment.
+torch==2.4.1+cpu
 accelerate>=0.33.0
 pandas>=2.2.0
 matplotlib>=3.8.0

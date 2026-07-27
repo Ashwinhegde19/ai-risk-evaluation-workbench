@@ -1,14 +1,33 @@
-.env
-.venv/
+# Python
 __pycache__/
 *.pyc
+.venv/
+
+# Environment & secrets
+.env
+
+# OS / editor
 .DS_Store
-.chainlit/translations/
-.files/
+
+# Generated run artifacts — never tracked.
+# (run_*.log / redteam*.log are covered by *.log; listed explicitly for clarity.)
+*.log
+run_*.log
+redteam*.log
 logs/*.jsonl
-results/*.csv
 results/*.json
+results/*.pdf
+results/*.csv
 reports/*.pdf
 reports/*.png
 reports/*.svg
+data/scores_history.json
+.chainlit/translations/
+.files/
 hf_cache/
+
+# Canonical / shipped artifacts that ARE tracked despite the rules above, and
+# must also reach the Hugging Face Space mirror.
+!results/redteam_findings.json
+!results/unlabelled_eval_results.csv
+!reports/unlabelled_evaluation_report.pdf

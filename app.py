@@ -13,11 +13,25 @@ from chainlit.input_widget import Select, Slider, Switch
 from dotenv import load_dotenv
 
 from assistant import RiskAwareAssistant, SlidingWindowMemory
+from assistant.retrieval import SimpleRetriever
+from evals.claim_verification import verify_claims
+from evals.policy_inference import infer_policy
 from evals.run_evals import run_evaluation, summarize
 from models import FrontierGatewayClient, create_oss_client
 from reports.generate_report import generate_report
 
 load_dotenv()
+
+# Chainlit 2.3.0's OAuth2PasswordBearerWithCookie extends fastapi's SecurityBase
+# without defining the `model` attribute that fastapi>=0.115 requires to build
+# the OpenAPI document. Patching the class avoids HTTP 500 on /openapi.json caused
+# by dependency drift between chainlit and fastapi without pinning fastapi down.
+from fastapi.openapi.models import OAuth2, OAuthFlowPassword, OAuthFlows as _OAuthFlows
+
+_chainlit_auth = importlib.import_module("chainlit.auth")
+_scheme_cls = _chainlit_auth.OAuth2PasswordBearerWithCookie
+if getattr(_scheme_cls, "model", None) is None:
+    _scheme_cls.model = OAuth2(flows=_OAuthFlows(password=OAuthFlowPassword(tokenUrl="/login")))
 
 # Chainlit 2.x can inherit an unset local_steps context in some local runtimes.
 # Giving the shared ContextVar a default keeps callbacks stable without changing app logic.
@@ -71,10 +85,15 @@ def get_memory() -> SlidingWindowMemory:
 
 
 def build_assistant(settings: dict[str, Any]) -> RiskAwareAssistant:
+    # V1: enable retrieval by default so factual/current questions get evidence.
+    # In the future, a vector retriever or approved web/API fallback can replace it.
+    retriever = SimpleRetriever() if (settings.get("assistant") == "Open Source Assistant") else None
     return RiskAwareAssistant(
         get_model_client(settings["assistant"]),
         memory=get_memory(),
         block_unsafe_inputs=bool(settings.get("block_unsafe_inputs", True)),
+        enable_retrieval=True,
+        retriever=retriever,
     )
 
 
@@ -286,17 +305,47 @@ async def on_message(message: cl.Message) -> None:
     response_message = cl.Message(content="")
     await response_message.send()
 
+    # V1 production flow: infer request policy, route, retrieve evidence, verify claims.
+    policy = infer_policy(message.content)
+    # If the inferred action requires retrieval and we have a retriever, the assistant handles it.
+    # If it requires refusal or ask_clarification, the assistant's guardrail/system layer handles it.
+
     result = await cl.make_async(assistant.respond)(
         message.content,
         temperature=float(settings["temperature"]),
         max_tokens=int(settings["max_tokens"]),
     )
 
+    # Post-response claim verification against retrieved evidence (if any).
+    evidence_items = result.metadata.get("retrieval_sources", [])
+    if evidence_items:
+        evidence_objs = [
+            {"source": s, "text": result.metadata.get("retrieval_matched_terms", "")}
+            for s in evidence_items
+        ]
+    else:
+        evidence_objs = []
+    claim_result = verify_claims(
+        question=message.content,
+        answer=result.response,
+        evidence=evidence_objs or [],
+        min_groundedness=0.55,
+    )
+
+    # Build trace with policy inference + claim verification.
+    trace_lines = format_trace(result).splitlines()
+    trace_lines.append(f"Inferred request type: {policy.request_type}")
+    trace_lines.append(f"Inferred expected action: {policy.expected_action}")
+    trace_lines.append(f"Policy confidence: {policy.confidence}")
+    trace_lines.append(f"Claim verification: {claim_result.status} (score={claim_result.groundedness_score})")
+    if claim_result.unsupported_numbers:
+        trace_lines.append(f"Unsupported numbers: {', '.join(claim_result.unsupported_numbers)}")
+
     response_message.content = result.response
     response_message.elements = [
         cl.Text(
             name="Request trace",
-            content=format_trace(result),
+            content="\n".join(trace_lines),
             display="side",
         )
     ]
