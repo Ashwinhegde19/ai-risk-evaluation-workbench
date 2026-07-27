@@ -74,8 +74,9 @@ def _load_redteam_findings(path: Path) -> Optional[List[dict]]:
 def _find_latest_eval_results(results_dir: Path) -> Optional[Path]:
     """Find the most recent eval results file in a directory.
 
-    Searches for files matching ``eval_results*.json`` and returns the one with
-    the most recent modification time.
+    Checks the stable ``eval_results_latest.json`` path first (written by the
+    pipeline after each run), then falls back to globbing ``eval_results*.json``
+    by modification time.
 
     Args:
         results_dir: Directory to search.
@@ -85,10 +86,106 @@ def _find_latest_eval_results(results_dir: Path) -> Optional[Path]:
     """
     if not results_dir.is_dir():
         return None
+    stable = results_dir / "eval_results_latest.json"
+    if stable.exists():
+        return stable
     candidates = list(results_dir.glob("eval_results*.json"))
     if not candidates:
         return None
     return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def _build_per_model_summary(
+    eval_results: List[EvalResult],
+    redteam_findings: List[dict],
+    deployment_context: DeploymentContext,
+) -> List[dict]:
+    """Build the combined per-model summary rows for a multi-model report.
+
+    Each row pairs the passive compliance tier, the adversarial (red-team)
+    tier, the break rate, and the combined certificate status for one model,
+    so a single document shows both evaluation layers side by side.
+
+    Args:
+        eval_results: Passive evaluation results across all models.
+        redteam_findings: Red-team finding rows (each with a ``target``).
+        deployment_context: Deployment context scaling the adversarial tier.
+
+    Returns:
+        A list of per-model row dicts ordered by first appearance, each with
+        ``model``, ``passive_tier``, ``adversarial_tier``, ``break_rate`` and
+        ``certificate`` keys. Empty when there are no models to summarize.
+    """
+    from src.compliance.redteam_mapping import adversarial_risk_tier
+    from src.pipeline.certificate import build_certificate
+
+    # Preserve first-appearance order across both layers.
+    ordered: List[str] = []
+
+    def _note(model: str) -> None:
+        if model and model not in ordered:
+            ordered.append(model)
+
+    passive_by_model: dict[str, List[EvalResult]] = {}
+    for result in eval_results:
+        passive_by_model.setdefault(result.model_name, []).append(result)
+        _note(result.model_name)
+
+    totals: dict[str, int] = {}
+    breaks: dict[str, int] = {}
+    for finding in redteam_findings:
+        target = str(finding.get("target", ""))
+        if not target:
+            continue
+        totals[target] = totals.get(target, 0) + 1
+        if finding.get("broke"):
+            breaks[target] = breaks.get(target, 0) + 1
+        _note(target)
+
+    rows: List[dict] = []
+    for model in ordered:
+        model_evals = passive_by_model.get(model, [])
+        passive_generator = ComplianceReportGenerator(
+            model_name=model,
+            eval_results=model_evals,
+            redteam_findings=[],
+            deployment_context=deployment_context,
+        )
+        passive_report = passive_generator.build_report()
+        passive_tier = passive_report.overall_risk_tier.value
+
+        total = totals.get(model, 0)
+        break_count = breaks.get(model, 0)
+        rate = (break_count / total) if total else 0.0
+        adv_tier = (
+            adversarial_risk_tier(rate, deployment_context)
+            if total
+            else None
+        )
+
+        # The combined report carries both layers' findings, so the certificate
+        # reflects passive + adversarial outcomes together.
+        combined_generator = ComplianceReportGenerator(
+            model_name=model,
+            eval_results=model_evals,
+            redteam_findings=[
+                f for f in redteam_findings if str(f.get("target", "")) == model
+            ],
+            deployment_context=deployment_context,
+        )
+        combined_report = combined_generator.build_report()
+        certificate = build_certificate(model, model_evals, combined_report)
+
+        rows.append(
+            {
+                "model": model,
+                "passive_tier": passive_tier,
+                "adversarial_tier": adv_tier.value if adv_tier else "-",
+                "break_rate": f"{rate:.1%} ({break_count}/{total})" if total else "-",
+                "certificate": certificate.status.value,
+            }
+        )
+    return rows
 
 
 def generate_report(
@@ -128,12 +225,19 @@ def generate_report(
             "Run the red-team agent first: python -m src.redteam.agent"
         )
 
+    # Build the combined per-model summary (passive tier + adversarial tier +
+    # combined certificate) so both layers appear together in one document.
+    per_model = _build_per_model_summary(
+        eval_results, redteam_findings, deployment_context
+    )
+
     # Build the compliance report.
     generator = ComplianceReportGenerator(
         model_name=model_name,
         eval_results=eval_results,
         redteam_findings=redteam_findings,
         deployment_context=deployment_context,
+        per_model=per_model,
     )
     report = generator.build_report()
 

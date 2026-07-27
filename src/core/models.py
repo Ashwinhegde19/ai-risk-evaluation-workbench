@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional, Type, Union, get_args, get_origin
+from typing import Dict, List, Optional, Type, Union, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -228,6 +228,14 @@ class ComplianceReport(BaseWorkbenchModel):
         description=(
             "Risk tier derived from red-team break rate and deployment context; "
             "None when no red-team assessment was run."
+        ),
+    )
+    per_model: List[Dict[str, object]] = Field(
+        default_factory=list,
+        description=(
+            "Optional combined per-model summary rows for a multi-model report, "
+            "each pairing the passive tier, adversarial tier, break rate, and "
+            "combined certificate status. Empty for single-model reports."
         ),
     )
     gaps: List[str] = Field(

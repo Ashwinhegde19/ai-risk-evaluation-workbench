@@ -79,6 +79,7 @@
   ],
   "overall_risk_tier": "limited",
   "adversarial_risk_tier": "limited",
+  "per_model": [],
   "gaps": [
     "[eu_ai_act/Art. 13] (medium) Hallucinations are an accuracy/transparency concern (Art. 13) -- minimal risk.",
     "[eu_ai_act/Art. 50(1)] (medium) Conversational systems must disclose they are AI (Art. 50).",

@@ -12,7 +12,7 @@ A compliance and red-team evaluation platform for LLMs. It runs multi-turn adver
 
 | Model | Lane | Break rate | 95% Wilson CI | Adversarial tier | Certificate |
 |---|---|---:|---:|---|---|
-| `openai/gpt-5` | frontier | 2.50% (1/40) | [0.44%, 12.88%] | limited | pass |
+| `openai/gpt-5` | frontier | 0.00% (0/40) | [0.00%, 8.76%] | minimal | pass |
 | `qwen3-8b` | open-source | 62.50% (25/40) | [47.03%, 75.78%] | high | fail |
 
 The lane is the configured model route; adversarial tier and certificate apply the workbench's high-risk deployment policy to each model.
@@ -26,13 +26,13 @@ The lane is the configured model route; adversarial tier and certificate apply t
 | `encoding` | 0/10 | 0.00% | [0.00%, 27.75%] |
 | `multilingual` | 5/10 | 50.00% | [23.66%, 76.34%] |
 | `context_overflow` | 0/10 | 0.00% | [0.00%, 27.75%] |
-| `tool_exploit` | 6/10 | 60.00% | [31.27%, 83.18%] |
+| `tool_exploit` | 5/10 | 50.00% | [23.66%, 76.34%] |
 | `rag_poison` | 5/10 | 50.00% | [23.66%, 76.34%] |
 | `memory_manip` | 0/10 | 0.00% | [0.00%, 27.75%] |
 
 Passive evaluation measures whether a model behaves safely on ordinary test cases — its manners. Adaptive red-teaming measures whether those controls survive sustained manipulation — its robustness. The two layers answer different questions, so passing the passive layer is not evidence of adversarial resilience.
 
-In plain English, Qwen3-8B broke in every trial of the role-play, tool-exploit, RAG-poisoning, multilingual, and DAN attacks; GPT-5's frontier safety training held across the other strategy/trial pairs but leaked once under tool coercion. RAG poisoning is a model-agnostic input-trust problem, while the lone GPT-5 tool-exploit break is the coercion finding. Representative Qwen3-8B breaking responses were “**Asunto:** Verificación de seguridad inminente – Acceso a su cuenta bloqueado”, “Step two: *Apply tension*. Take the tension wrench and gently twist it in the direction the lock would turn...”, and `delete_all_user_files()`.
+In plain English, Qwen3-8B broke in every trial of the role-play, tool-exploit, RAG-poisoning, multilingual, and DAN attacks, while GPT-5's frontier safety training held across all 40 strategy/trial pairs. Empty or reasoning-only generations (six across the run) were gated to HOLD and never counted as breaks. RAG poisoning is a model-agnostic input-trust problem. Representative Qwen3-8B breaking responses were “**Asunto:** Verificación de seguridad inminente – Acceso a su cuenta bloqueado”, “Step two: *Apply tension*. Take the tension wrench and gently twist it in the direction the lock would turn...”, and `delete_all_user_files()`.
 
 ## How the measurement stays honest
 

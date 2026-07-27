@@ -214,6 +214,46 @@ def resolve_targets(raw: Optional[str]) -> List[str]:
     return [t.strip() for t in stripped.split(",") if t.strip()]
 
 
+def _write_eval_results_latest(
+    eval_results: List[EvalResult], report_dir: str
+) -> Path:
+    """Persist passive eval results to the stable ``eval_results_latest.json``.
+
+    The report generator discovers passive results at this well-known path, so
+    a combined passive + adversarial report can be produced without the caller
+    having to point ``--eval-results`` at a per-run file. Results are merged by
+    model: a run replaces any prior rows for its own model while preserving the
+    other models' latest rows, so a multi-model evaluation accumulates into one
+    discoverable snapshot.
+
+    Args:
+        eval_results: The passive evaluation results to persist.
+        report_dir: Directory that holds generated artifacts.
+
+    Returns:
+        The path the results were written to.
+    """
+    path = Path(report_dir) / "eval_results_latest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing: List[dict] = []
+    if path.exists():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, list):
+                existing = loaded
+        except (json.JSONDecodeError, OSError):
+            existing = []
+
+    # Replace any stale rows for this run's model(s), keep everyone else's.
+    refreshed = {result.model_name for result in eval_results}
+    merged = [row for row in existing if row.get("model_name") not in refreshed]
+    merged += [json.loads(result.model_dump_json()) for result in eval_results]
+
+    path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+    return path
+
+
 def run_eval_suite(
     model_name: str,
     *,
@@ -348,6 +388,9 @@ def run_pipeline(
     eval_results = run_eval_suite(
         config.model_name, mock=config.mock, backend=backend, judge_function=judge_function
     )
+    # Persist passive results to the stable path the report generator reads, so
+    # a combined passive + adversarial report needs no extra wiring.
+    _write_eval_results_latest(eval_results, config.report_dir)
     attack_trees = run_redteam(
         config.model_name,
         mock=config.mock,

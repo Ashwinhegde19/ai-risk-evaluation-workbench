@@ -58,6 +58,7 @@ class ComplianceReportGenerator:
         timestamp: datetime | None = None,
         redteam_findings: List[dict] | None = None,
         deployment_context: DeploymentContext = DeploymentContext.LIMITED,
+        per_model: List[Dict[str, object]] | None = None,
     ) -> None:
         """Initialize the generator.
 
@@ -70,12 +71,16 @@ class ComplianceReportGenerator:
                 breaks are mapped to compliance findings and the report becomes
                 adversarially-aware.
             deployment_context: Scales the red-team risk tier (default LIMITED).
+            per_model: Optional combined per-model summary rows (``{model,
+                passive_tier, adversarial_tier, break_rate, certificate}``)
+                rendered as a table in combined multi-model reports.
         """
         self.model_name = model_name
         self.eval_results: List[EvalResult] = list(eval_results)
         self.timestamp = timestamp or datetime.now(timezone.utc)
         self.redteam_findings: List[dict] = list(redteam_findings or [])
         self.deployment_context = deployment_context
+        self.per_model: List[Dict[str, object]] = list(per_model or [])
         self._findings: List[ComplianceFinding] | None = None
         self._redteam_compliance: List[ComplianceFinding] | None = None
 
@@ -199,6 +204,7 @@ class ComplianceReportGenerator:
             redteam_findings=redteam,
             overall_risk_tier=overall,
             adversarial_risk_tier=adv_tier,
+            per_model=self.per_model,
             gaps=self.recommendations(),
         )
 
@@ -290,6 +296,18 @@ class ComplianceReportGenerator:
         lines: List[str] = []
         lines += textwrap.wrap(self.executive_summary(report), _WRAP_WIDTH) or [""]
         lines.append("")
+        if report.per_model:
+            lines.append("=== Per-Model Summary (Passive + Adversarial) ===")
+            lines.append(
+                "Model | Passive tier | Adversarial tier | Break rate | Certificate"
+            )
+            for row in report.per_model:
+                lines.append(
+                    f"{row.get('model', '-')} | {row.get('passive_tier', '-')} "
+                    f"| {row.get('adversarial_tier', '-')} "
+                    f"| {row.get('break_rate', '-')} | {row.get('certificate', '-')}"
+                )
+            lines.append("")
         lines.append("=== Compliance Findings ===")
         if not report.findings:
             lines.append("No compliance findings (all dimensions within tolerance).")
