@@ -215,23 +215,29 @@ def resolve_targets(raw: Optional[str]) -> List[str]:
 
 
 def _write_eval_results_latest(
-    eval_results: List[EvalResult], report_dir: str
+    eval_results: List[EvalResult],
+    report_dir: str,
+    timestamp: Optional[datetime] = None,
 ) -> Path:
     """Persist passive eval results to the stable ``eval_results_latest.json``.
 
     The report generator discovers passive results at this well-known path, so
     a combined passive + adversarial report can be produced without the caller
-    having to point ``--eval-results`` at a per-run file. Results are merged by
-    model: a run replaces any prior rows for its own model while preserving the
-    other models' latest rows, so a multi-model evaluation accumulates into one
-    discoverable snapshot.
+    having to point ``--eval-results`` at a per-run file. The stable file is
+    the single source of truth the report reads; a timestamped copy
+    (``eval_results_<UTC stamp>.json``) is written alongside it for history.
+    Results are merged by model: a run replaces any prior rows for its own
+    model while preserving the other models' latest rows, so a multi-model
+    evaluation accumulates into one discoverable snapshot.
 
     Args:
         eval_results: The passive evaluation results to persist.
         report_dir: Directory that holds generated artifacts.
+        timestamp: Optional run timestamp used to name the timestamped copy
+            (defaults to now, UTC).
 
     Returns:
-        The path the results were written to.
+        The path the stable results were written to.
     """
     path = Path(report_dir) / "eval_results_latest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -250,7 +256,13 @@ def _write_eval_results_latest(
     merged = [row for row in existing if row.get("model_name") not in refreshed]
     merged += [json.loads(result.model_dump_json()) for result in eval_results]
 
-    path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+    payload = json.dumps(merged, indent=2)
+    path.write_text(payload, encoding="utf-8")
+
+    # Keep a timestamped copy for history (the stable file is what the report
+    # generator reads; this copy is never the discovery target).
+    stamp = (timestamp or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
+    (path.parent / f"eval_results_{stamp}.json").write_text(payload, encoding="utf-8")
     return path
 
 
@@ -390,7 +402,7 @@ def run_pipeline(
     )
     # Persist passive results to the stable path the report generator reads, so
     # a combined passive + adversarial report needs no extra wiring.
-    _write_eval_results_latest(eval_results, config.report_dir)
+    _write_eval_results_latest(eval_results, config.report_dir, timestamp=run_at)
     attack_trees = run_redteam(
         config.model_name,
         mock=config.mock,

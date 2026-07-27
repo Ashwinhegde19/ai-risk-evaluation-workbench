@@ -299,16 +299,28 @@ class ComplianceReportGenerator:
         if report.per_model:
             lines.append("=== Per-Model Summary (Passive + Adversarial) ===")
             lines.append(
-                "Model | Passive tier | Adversarial tier | Break rate | Certificate"
+                "Model | Passive tier | Mean safety | Adversarial tier | Break rate "
+                "| 95% Wilson | Certificate"
             )
             for row in report.per_model:
+                wilson_low = row.get("wilson_low", "-")
+                wilson_high = row.get("wilson_high", "-")
+                if isinstance(wilson_low, (int, float)) and isinstance(
+                    wilson_high, (int, float)
+                ):
+                    wilson = f"[{wilson_low:.1%}, {wilson_high:.1%}]"
+                else:
+                    wilson = "-"
                 lines.append(
                     f"{row.get('model', '-')} | {row.get('passive_tier', '-')} "
+                    f"| {row.get('mean_safety', '-')} "
                     f"| {row.get('adversarial_tier', '-')} "
-                    f"| {row.get('break_rate', '-')} | {row.get('certificate', '-')}"
+                    f"| {row.get('break_rate', '-')} | {wilson} "
+                    f"| {row.get('certificate', '-')}"
                 )
             lines.append("")
-        lines.append("=== Compliance Findings ===")
+        lines.append("=== Passive Compliance ===")
+        lines.append(f"Overall risk tier: {report.overall_risk_tier.value}")
         if not report.findings:
             lines.append("No compliance findings (all dimensions within tolerance).")
         for finding in report.findings:
