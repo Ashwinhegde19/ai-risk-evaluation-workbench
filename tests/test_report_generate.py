@@ -7,15 +7,22 @@ a compliance report:
   findings and red-team findings, plus an ``adversarial_risk_tier``;
 * a missing findings file yields a clear "run the red-team agent first" error
   rather than a crash.
+* the end-to-end passive-write → report-load wiring: a mocked pipeline run
+  persists ``eval_results_latest.json`` and the report CLI discovers it (no
+  ``--eval-results`` flag), producing a combined report with both sections and
+  per-model passive + adversarial tiers;
+* a genuinely missing passive file still degrades gracefully WITH the
+  "no passive eval results found" warning (no crash).
 """
 
 from __future__ import annotations
 
 import io
 import json
+import os
 import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from src.compliance.redteam_mapping import DeploymentContext
@@ -169,6 +176,132 @@ class ReportCliTests(unittest.TestCase):
                 )
             self.assertEqual(code, 1)
             self.assertIn("red-team agent", buf.getvalue().lower())
+
+
+class CombinedReportWiringTests(unittest.TestCase):
+    """End-to-end wiring: mocked pipeline run → report CLI discovers passive
+    results at the stable path and combines both layers."""
+
+    def test_pipeline_write_then_generate_combines_both_layers(self):
+        from src.pipeline.run import PipelineConfig, run_pipeline
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            results = tmp_path / "results"
+            config = PipelineConfig(
+                model_name="test-model",
+                mock=True,
+                report_dir=str(results),
+                history_path=str(tmp_path / "scores_history.json"),
+            )
+            run_pipeline(config)
+
+            # The pipeline persisted passive results to the stable path.
+            stable = results / "eval_results_latest.json"
+            self.assertTrue(stable.exists())
+            self.assertGreater(stable.stat().st_size, 0)
+
+            # A red-team findings file with breaks (break rate 0.5 >= 0.25
+            # trips the critical adversarial finding in a high-risk context).
+            findings_path = results / "redteam_findings.json"
+            _write_redteam_findings(findings_path)
+
+            out_dir = results / "out"
+            # No --eval-results: the CLI must discover the stable file itself.
+            # Discovery is cwd-relative ("results/"), so run from the temp
+            # root to keep the test hermetic.
+            old_cwd = Path.cwd()
+            os.chdir(tmp_path)
+            try:
+                buf = io.StringIO()
+                with redirect_stderr(buf):
+                    code = main(
+                        [
+                            "--format", "all",
+                            "--framework", "all",
+                            "--redteam-findings", str(findings_path),
+                            "--deployment-context", "high",
+                            "--out", str(out_dir),
+                            "--model-name", "combined",
+                        ]
+                    )
+            finally:
+                os.chdir(old_cwd)
+            self.assertEqual(code, 0)
+
+            # The "red-team-only" warning must NOT appear when the passive
+            # file exists.
+            self.assertNotIn("no passive eval results found", buf.getvalue())
+
+            report = json.loads(
+                (out_dir / "compliance_report_combined.json").read_text(encoding="utf-8")
+            )
+            # Both layers present: the passive layer contributes its risk tier
+            # (mock scores are within tolerance, so zero findings is correct)
+            # and the red-team layer contributes mapped findings.
+            self.assertIn(
+                report["overall_risk_tier"],
+                ("minimal", "limited", "medium", "high", "unacceptable"),
+            )
+            self.assertGreater(len(report["redteam_findings"]), 0)
+            self.assertIsNotNone(report["adversarial_risk_tier"])
+
+            # Per-model row pairs both tiers, break rate + Wilson CI, and the
+            # combined certificate.
+            self.assertEqual(len(report["per_model"]), 1)
+            row = report["per_model"][0]
+            self.assertEqual(row["model"], "test-model")
+            self.assertIn(row["passive_tier"], ("minimal", "limited", "medium", "high", "unacceptable"))
+            self.assertEqual(row["adversarial_tier"], "high")
+            self.assertIn("50.0% (2/4)", row["break_rate"])
+            self.assertIsInstance(row["wilson_low"], float)
+            self.assertIsInstance(row["wilson_high"], float)
+            self.assertGreater(row["wilson_high"], row["wilson_low"])
+            # Break rate 0.5 >= 0.25 in HIGH_RISK → critical adversarial
+            # finding → combined certificate fails even though the passive
+            # tier is low.
+            self.assertEqual(row["certificate"], "fail")
+
+            # The PDF carries both clearly separated sections. (The PDF writer
+            # escapes parentheses, hence the backslashes in the second marker.)
+            pdf_bytes = (out_dir / "compliance_report_combined.pdf").read_bytes()
+            self.assertIn(b"Passive Compliance", pdf_bytes)
+            self.assertIn(b"Red-Team \\(Adversarial\\) Findings", pdf_bytes)
+
+    def test_missing_passive_file_degrades_gracefully_with_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # A results dir with red-team findings but NO passive file.
+            results = tmp_path / "results"
+            results.mkdir()
+            findings_path = results / "redteam_findings.json"
+            _write_redteam_findings(findings_path)
+
+            out_dir = tmp_path / "out"
+            old_cwd = Path.cwd()
+            os.chdir(tmp_path)
+            try:
+                err = io.StringIO()
+                with redirect_stderr(err), redirect_stdout(io.StringIO()):
+                    code = main(
+                        [
+                            "--redteam-findings", str(findings_path),
+                            "--deployment-context", "high",
+                            "--out", str(out_dir),
+                            "--model-name", "redteam-only",
+                        ]
+                    )
+            finally:
+                os.chdir(old_cwd)
+
+            # Graceful: exit 0, warning printed, red-team-only report written.
+            self.assertEqual(code, 0)
+            self.assertIn("no passive eval results found", err.getvalue())
+            report = json.loads(
+                (out_dir / "compliance_report_redteam-only.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(len(report["findings"]), 0)
+            self.assertGreater(len(report["redteam_findings"]), 0)
 
 
 if __name__ == "__main__":

@@ -95,6 +95,31 @@ def _find_latest_eval_results(results_dir: Path) -> Optional[Path]:
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
+def _wilson_ci(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
+    """Compute the 95% Wilson score interval for a binomial proportion.
+
+    Args:
+        successes: Number of successes (red-team breaks).
+        total: Total number of trials.
+        z: Z-score for the confidence level (1.96 for 95%).
+
+    Returns:
+        A ``(low, high)`` tuple bounding the true break proportion. Returns
+        ``(0.0, 0.0)`` when there are no trials.
+    """
+    import math
+
+    if total == 0:
+        return (0.0, 0.0)
+    p_hat = successes / total
+    denominator = 1 + z * z / total
+    centre = (p_hat + z * z / (2 * total)) / denominator
+    margin = (z / denominator) * math.sqrt(
+        (p_hat * (1 - p_hat) + z * z / (4 * total)) / total
+    )
+    return (max(0.0, centre - margin), min(1.0, centre + margin))
+
+
 def _build_per_model_summary(
     eval_results: List[EvalResult],
     redteam_findings: List[dict],
@@ -113,8 +138,9 @@ def _build_per_model_summary(
 
     Returns:
         A list of per-model row dicts ordered by first appearance, each with
-        ``model``, ``passive_tier``, ``adversarial_tier``, ``break_rate`` and
-        ``certificate`` keys. Empty when there are no models to summarize.
+        ``model``, ``passive_tier``, ``mean_safety``, ``adversarial_tier``,
+        ``break_rate``, ``wilson_low``, ``wilson_high`` and ``certificate``
+        keys. Empty when there are no models to summarize.
     """
     from src.compliance.redteam_mapping import adversarial_risk_tier
     from src.pipeline.certificate import build_certificate
@@ -157,9 +183,16 @@ def _build_per_model_summary(
         total = totals.get(model, 0)
         break_count = breaks.get(model, 0)
         rate = (break_count / total) if total else 0.0
+        wilson_low, wilson_high = _wilson_ci(break_count, total)
         adv_tier = (
             adversarial_risk_tier(rate, deployment_context)
             if total
+            else None
+        )
+
+        mean_safety = (
+            sum(r.score for r in model_evals) / len(model_evals)
+            if model_evals
             else None
         )
 
@@ -180,8 +213,11 @@ def _build_per_model_summary(
             {
                 "model": model,
                 "passive_tier": passive_tier,
+                "mean_safety": round(mean_safety, 4) if mean_safety is not None else "-",
                 "adversarial_tier": adv_tier.value if adv_tier else "-",
                 "break_rate": f"{rate:.1%} ({break_count}/{total})" if total else "-",
+                "wilson_low": round(wilson_low, 4) if total else "-",
+                "wilson_high": round(wilson_high, 4) if total else "-",
                 "certificate": certificate.status.value,
             }
         )
