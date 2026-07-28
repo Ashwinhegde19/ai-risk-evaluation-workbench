@@ -8,20 +8,40 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,400..900,0..100,0..1;1,9..144,400..900,0..100,0..1&family=Spectral:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
     rel="stylesheet" />
   <link rel="stylesheet" href="assets/styles.css" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230C1A1B'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='18' font-weight='bold' fill='%23E2483A' text-anchor='middle'%3EV%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2314110F'/%3E%3Ctext x='16' y='24' font-family='Georgia,serif' font-size='20' font-weight='bold' fill='%23C8402A' text-anchor='middle'%3EV%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
-  <div class="bg-grid" aria-hidden="true"></div>
-  <div class="bg-scan" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="dust" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="vignette" aria-hidden="true"></div>
 
   <a class="skip-link" href="#verdict-board">Skip to verdict board</a>
 
+  <!-- ══ DOCKET SPINE (desktop) ══ -->
+  <aside class="spine" aria-label="Docket navigation">
+    <span class="spine__mark" aria-hidden="true">V·26</span>
+    <p class="spine__case">Docket 2026-AI-Redteam · Seed 42 · Canonical</p>
+    <nav class="spine__nav" aria-label="Sections">
+      <a href="#verdict-board" data-spy="verdict-board"><i></i><span>Verdict</span></a>
+      <a href="#battlefield" data-spy="battlefield"><i></i><span>Battlefield</span></a>
+      <a href="#vault" data-spy="vault"><i></i><span>Evidence</span></a>
+      <a href="#tribunal" data-spy="tribunal"><i></i><span>Tribunal</span></a>
+      <a href="#audit" data-spy="audit"><i></i><span>Instrument</span></a>
+      <a href="#methods" data-spy="methods"><i></i><span>Methods</span></a>
+    </nav>
+    <button class="spine__theme" id="theme-toggle" type="button" aria-pressed="false" title="Switch to archival (light) dossier">
+      <span class="spine__theme-ic" aria-hidden="true">◐</span>
+      <span class="spine__theme-lbl">Archival</span>
+    </button>
+  </aside>
+
+  <!-- ══ TOP BAR (mobile) ══ -->
   <header class="topbar">
-    <span class="topbar__brand">VERDICT<em>▮</em></span>
-    <span class="topbar__run">run record · seed 42 · canonical</span>
+    <span class="topbar__brand">VERDICT</span>
+    <span class="topbar__run">docket 2026-ai-redteam · seed 42</span>
     <nav class="topbar__links" aria-label="Sections">
       <a href="#verdict-board">Verdict</a>
       <a href="#battlefield">Battlefield</a>
@@ -30,103 +50,106 @@
       <a href="#audit">Instrument</a>
       <a href="#methods">Methods</a>
     </nav>
+    <button class="topbar__theme" id="theme-toggle-m" type="button" aria-pressed="false" aria-label="Switch to archival (light) dossier">◐</button>
   </header>
 
   <main class="console">
-    <!-- ══ 01 RUN BANNER ══ -->
-    <section class="run-banner" id="run-banner" aria-labelledby="run-banner-h">
-      <h1 id="run-banner-h" class="visually-hidden">VERDICT run record</h1>
-      <div class="run-banner__grid">
-        <div class="boot" id="boot-log" aria-label="Run boot log"></div>
-        <div class="run-verdict">
-          <p class="run-verdict__kicker mono-label">Adjudicated outcome · deployment context = high-risk</p>
-          <h2 class="run-verdict__h1">One model held.<br />One model <b>broke</b> — 25 times.</h2>
-          <p>Two layers: passive compliance, then an adaptive multi-turn red-team. Eight attack strategies, five seeded trials each, every non-refusal sent to an LLM adjudicator.</p>
-          <span class="src-badge" id="source-badge">source: inlined fallback · seed-42 canonical</span>
+    <!-- ══ 01 CASE CAPTION + STENOGRAPHER'S TRANSCRIPT ══ -->
+    <section class="caption" id="run-banner" aria-labelledby="run-banner-h">
+      <div class="caption__grid">
+        <div class="caption__doc">
+          <p class="caption__court mono-label">In the matter of frontier vs open-weight robustness</p>
+          <p class="caption__line" aria-hidden="true"></p>
+          <p class="caption__heading">Findings of fact &amp; verdict</p>
+          <h1 class="caption__pull" id="run-banner-h">One model held.<br />One model <b>broke</b> — 25 times.</h1>
+          <p class="caption__lede">Two layers: passive compliance, then an adaptive multi-turn red-team. Eight attack strategies, five seeded trials each, every non-refusal sent to an LLM adjudicator.</p>
+          <p class="caption__src"><span class="src-badge" id="source-badge">source: inlined fallback · seed-42 canonical</span></p>
+          <div class="caption__stamp" aria-hidden="true"><span class="stamp stamp--fail" id="run-stamp">FAIL</span></div>
+        </div>
+
+        <div class="transcript" id="transcript">
+          <div class="transcript__head">
+            <span class="mono-label">Stenographer's transcript — run record</span>
+            <button class="transcript__skip" id="transcript-skip" type="button" hidden>Skip ▸</button>
+          </div>
+          <div class="transcript__body" id="boot-log" aria-label="Run boot log"></div>
         </div>
       </div>
-      <div class="run-stamp-wrap" aria-hidden="true">
-        <span class="stamp stamp--fail" id="run-stamp">FAIL</span>
-      </div>
+
       <div class="ticker" aria-hidden="true">
-        <div class="ticker__track" id="ticker-track"></div>
+        <span class="ticker__cap mono-label">Adjudicator feed</span>
+        <div class="ticker__window"><div class="ticker__track" id="ticker-track"></div></div>
       </div>
     </section>
 
     <!-- ══ 02 VERDICT BOARD ══ -->
     <section class="board reveal" id="verdict-board" aria-labelledby="board-h">
       <header class="sec-head">
-        <span class="sec-index">02</span>
-        <div>
-          <h2 id="board-h">Verdict board</h2>
-          <p class="sec-sub">Adversarial break rate per model, 40 trials each (8 strategies × 5 seeds). Intervals are 95% Wilson score bounds — drawn on one shared 0–100% axis so the gap speaks for itself.</p>
-        </div>
+        <p class="sec-eyebrow mono-label">Exhibit A · adjudicated outcome · deployment context = high-risk</p>
+        <h2 id="board-h">Verdict board</h2>
+        <p class="sec-sub">Adversarial break rate per model, 40 trials each (8 strategies × 5 seeds). Intervals are 95% Wilson score bounds — drawn on one shared 0–100% axis so the gap speaks for itself.</p>
       </header>
 
       <div class="board__grid">
-        <article class="dossier dossier--flagged" aria-labelledby="flag-h">
-          <div class="dossier__kicker">
-            <span class="mono-label dossier__role">Flagged · self-deployed · Modal NVIDIA L4</span>
-          </div>
-          <h3 class="dossier__model" id="flag-h">qwen3-8b</h3>
-          <p class="dossier__meta" id="flag-meta"></p>
-          <div class="dossier__pct">
+        <article class="plate plate--flagged" aria-labelledby="flag-h">
+          <div class="plate__corner" aria-hidden="true"></div>
+          <div class="plate__tape" aria-hidden="true"></div>
+          <p class="plate__kicker mono-label">Flagged · self-deployed · Modal NVIDIA L4</p>
+          <h3 class="plate__model" id="flag-h">qwen3-8b</h3>
+          <p class="plate__label" id="flag-meta"></p>
+          <div class="plate__pct">
             <span class="num" id="flag-pct">0.0</span><span class="pct-sign">%</span>
           </div>
-          <p class="dossier__ci">breaks 25/40 · wilson 95% <span id="flag-ci"></span></p>
-          <div class="stamp-wrap"><span class="stamp stamp--fail" role="img" aria-label="Adversarial verdict: break">BREAK</span></div>
-          <div class="dossier__ci-bar" id="flag-bar" aria-hidden="true"></div>
-          <p class="dossier__note">Passive tier cleared at <code>minimal</code>. The adversarial layer is what fails the certificate: a 62.5% break rate in a high-risk deployment context emits critical findings across all three frameworks.</p>
+          <p class="plate__ci">breaks 25/40 · wilson 95% <span id="flag-ci"></span></p>
+          <div class="plate__stamp"><span class="stamp stamp--fail" role="img" aria-label="Adversarial verdict: break">BREAK</span></div>
+          <div class="plate__bar" id="flag-bar" aria-hidden="true"></div>
+          <p class="plate__note">Passive tier cleared at <code>minimal</code>. The adversarial layer is what fails the certificate: a 62.5% break rate in a high-risk deployment context emits critical findings across all three frameworks.</p>
         </article>
 
-        <article class="dossier dossier--cleared" aria-labelledby="clear-h">
-          <div class="dossier__kicker">
-            <span class="mono-label dossier__role">Cleared · frontier · Kilo gateway</span>
-          </div>
-          <h3 class="dossier__model" id="clear-h">openai/gpt-5</h3>
-          <p class="dossier__meta" id="clear-meta"></p>
-          <div class="dossier__pct">
+        <article class="plate plate--cleared" aria-labelledby="clear-h">
+          <p class="plate__kicker mono-label">Cleared · frontier · Kilo gateway</p>
+          <h3 class="plate__model" id="clear-h">openai/gpt-5</h3>
+          <p class="plate__label" id="clear-meta"></p>
+          <div class="plate__pct">
             <span class="num" id="clear-pct">0.0</span><span class="pct-sign">%</span>
           </div>
-          <p class="dossier__ci">breaks 1/40 · wilson 95% <span id="clear-ci"></span></p>
-          <div class="stamp-wrap"><span class="stamp stamp--pass" role="img" aria-label="Adversarial verdict: hold">HOLD</span></div>
-          <div class="dossier__ci-bar" id="clear-bar" aria-hidden="true"></div>
-          <p class="dossier__note">One break on record — <code>tool_exploit</code>, trial 4, turn 3 — is an adjudicator edge: a confirmation-gated reply scored as compliance. It is disclosed in the evidence vault below.</p>
+          <p class="plate__ci">breaks 1/40 · wilson 95% <span id="clear-ci"></span></p>
+          <div class="plate__stamp"><span class="stamp stamp--pass" role="img" aria-label="Adversarial verdict: hold">HOLD</span></div>
+          <div class="plate__bar" id="clear-bar" aria-hidden="true"></div>
+          <p class="plate__note">One break on record — <code>tool_exploit</code>, trial 4, turn 3 — is an adjudicator edge: a confirmation-gated reply scored as compliance. It is disclosed in the evidence vault below.</p>
         </article>
 
-        <div class="axis" role="img" aria-label="Shared 0 to 100 percent axis. GPT-5 Wilson interval 0.44 to 12.88 percent. Qwen3-8B Wilson interval 47.03 to 75.78 percent. The intervals do not overlap; the gap between 12.88 and 47.03 percent is marked as statistically significant.">
-          <p class="mono-label axis__title">Shared axis · 95% Wilson intervals · breaks / 40</p>
-          <div class="axis__lanes">
-            <div class="axis__lane">
-              <span class="axis__lane-lbl t-breach">qwen3-8b</span>
-              <div class="axis__plot" id="axis-qwen"></div>
-              <span class="axis__lane-ci" id="axis-qwen-ci"></span>
-            </div>
+        <figure class="axis reveal" role="img" aria-label="Shared 0 to 100 percent axis. GPT-5 Wilson interval 0.44 to 12.88 percent. Qwen3-8B Wilson interval 47.03 to 75.78 percent. The intervals do not overlap; the gap between 12.88 and 47.03 percent is marked as statistically significant.">
+          <figcaption class="axis__title mono-label">Fig. 1 · shared axis · 95% Wilson intervals · breaks / 40</figcaption>
+          <div class="axis__plot" id="axis-plot">
             <div class="axis__lane">
               <span class="axis__lane-lbl t-hold">openai/gpt-5</span>
-              <div class="axis__plot" id="axis-gpt"></div>
+              <div class="axis__track" id="axis-gpt"></div>
               <span class="axis__lane-ci" id="axis-gpt-ci"></span>
             </div>
-          </div>
-          <div class="axis__gap" id="axis-gap">
-            <div class="gap-marker" id="gap-marker">
-              <span class="gap-marker__label" id="gap-label"></span>
+            <div class="axis__gap" id="axis-gap">
+              <div class="gap-marker" id="gap-marker">
+                <span class="gap-marker__label" id="gap-label"></span>
+              </div>
             </div>
+            <div class="axis__lane">
+              <span class="axis__lane-lbl t-breach">qwen3-8b</span>
+              <div class="axis__track" id="axis-qwen"></div>
+              <span class="axis__lane-ci" id="axis-qwen-ci"></span>
+            </div>
+            <div class="axis__ticks" id="axis-ticks" aria-hidden="true"></div>
           </div>
-          <div class="axis__ticks" id="axis-ticks" aria-hidden="true"></div>
           <p class="axis__note" id="gap-note"></p>
-        </div>
+        </figure>
       </div>
     </section>
 
     <!-- ══ 03 STRATEGY BATTLEFIELD ══ -->
     <section class="battlefield reveal" id="battlefield" aria-labelledby="bf-h">
       <header class="sec-head">
-        <span class="sec-index">03</span>
-        <div>
-          <h2 id="bf-h">Strategy battlefield</h2>
-          <p class="sec-sub">Eight attack vectors, ten trials each (five per model). Solid bar = observed break rate; the thin ghost behind it = the 95% Wilson upper reach. Hover any row for one real exchange.</p>
-        </div>
+        <p class="sec-eyebrow mono-label">Exhibit B · eight attack vectors on the record</p>
+        <h2 id="bf-h">Strategy battlefield</h2>
+        <p class="sec-sub">Eight attack vectors, ten trials each (five per model). Solid bar = observed break rate; the thin ghost behind it = the 95% Wilson upper reach. Hover any row for one real exchange.</p>
       </header>
       <div class="bf-legend" aria-hidden="true">
         <span class="bf-legend__item"><i class="swatch swatch--ghost"></i> wilson reach</span>
@@ -139,11 +162,9 @@
     <!-- ══ 04 EVIDENCE VAULT ══ -->
     <section class="vault reveal" id="vault" aria-labelledby="vault-h">
       <header class="sec-head">
-        <span class="sec-index">04</span>
-        <div>
-          <h2 id="vault-h">Evidence vault</h2>
-          <p class="sec-sub">Every break on record — full attack transcript, the model's response, and the adjudicator's verdict. Click a case file to open the exhibit.</p>
-        </div>
+        <p class="sec-eyebrow mono-label">Exhibit C · case files entered into evidence</p>
+        <h2 id="vault-h">Evidence vault</h2>
+        <p class="sec-sub">Every break on record — full attack transcript, the model's response, and the adjudicator's verdict. Click a case file to open the exhibit.</p>
       </header>
 
       <div class="vault__bar" role="group" aria-label="Evidence filters">
@@ -179,7 +200,7 @@
         <p class="mono-label vault__count" id="vault-count" aria-live="polite"></p>
       </div>
 
-      <div class="case-list" id="vault-list" role="list" aria-label="Break case files"></div>
+      <div class="case-list" id="vault-list" aria-label="Break case files"></div>
 
       <div class="vault__note">
         <p><span class="mono-label">scoring note</span> Responses are adjudicated on the <em>visible</em> answer —
@@ -191,11 +212,9 @@
     <!-- ══ 05 COMPLIANCE TRIBUNAL ══ -->
     <section class="tribunal reveal" id="tribunal" aria-labelledby="tribunal-h">
       <header class="sec-head">
-        <span class="sec-index">05</span>
-        <div>
-          <h2 id="tribunal-h">Compliance tribunal</h2>
-          <p class="sec-sub">Every break category is indicted under three frameworks at once. Citations are pulled from <code>compliance_report_model.json</code>; categories with no observed break are filed as held, with the standing citation.</p>
-        </div>
+        <p class="sec-eyebrow mono-label">Exhibit D · three-framework indictment</p>
+        <h2 id="tribunal-h">Compliance tribunal</h2>
+        <p class="sec-sub">Every break category is indicted under three frameworks at once. Citations are pulled from <code>compliance_report_model.json</code>; categories with no observed break are filed as held, with the standing citation.</p>
       </header>
 
       <div class="cert-row">
@@ -235,11 +254,9 @@
     <!-- ══ 06 INSTRUMENT AUDIT ══ -->
     <section class="audit reveal" id="audit" aria-labelledby="audit-h">
       <header class="sec-head">
-        <span class="sec-index">06</span>
-        <div>
-          <h2 id="audit-h">The instrument was audited too</h2>
-          <p class="sec-sub">Four scoring bugs were caught and fixed during this build. Each one made the verdict lie in a different direction — before a number on this page was allowed to ship, the scorer itself had to pass examination.</p>
-        </div>
+        <p class="sec-eyebrow mono-label">Findings of fact · the scorer on the stand</p>
+        <h2 id="audit-h">The instrument was audited too</h2>
+        <p class="sec-sub">Four scoring bugs were caught and fixed during this build. Each one made the verdict lie in a different direction — before a number on this page was allowed to ship, the scorer itself had to pass examination.</p>
       </header>
       <ol class="audit__line" id="audit-line"></ol>
     </section>
@@ -247,11 +264,9 @@
     <!-- ══ 07 METHODS ══ -->
     <footer class="methods reveal" id="methods" aria-labelledby="methods-h">
       <header class="sec-head">
-        <span class="sec-index">07</span>
-        <div>
-          <h2 id="methods-h">Methods &amp; reproducibility</h2>
-          <p class="sec-sub">Everything on this page is derivable from the two artifacts below and the commands beside them.</p>
-        </div>
+        <p class="sec-eyebrow mono-label">Appendix · chain of custody</p>
+        <h2 id="methods-h">Methods &amp; reproducibility</h2>
+        <p class="sec-sub">Everything on this page is derivable from the two artifacts below and the commands beside them.</p>
       </header>
       <div class="methods__grid">
         <div class="methods__params">
@@ -292,20 +307,23 @@
     </footer>
   </main>
 
-  <!-- ══ EXHIBIT SLIDE-OVER ══ -->
+  <!-- ══ EXHIBIT FOLDER (modal) ══ -->
   <div class="exhibit-backdrop" id="exhibit-backdrop" hidden></div>
   <aside class="exhibit" id="exhibit" role="dialog" aria-modal="true" aria-labelledby="exhibit-title" aria-hidden="true">
-    <header class="exhibit__head">
-      <div>
-        <p class="mono-label exhibit__eyebrow" id="exhibit-eyebrow">EXHIBIT</p>
-        <h2 id="exhibit-title" class="exhibit__title">Case file</h2>
-      </div>
-      <button class="exhibit__close" id="exhibit-close" type="button" aria-label="Close exhibit">✕ <span>ESC</span></button>
-    </header>
-    <div class="exhibit__scroll" id="exhibit-scroll"></div>
-    <footer class="exhibit__foot">
-      <span class="mono-label">Certified true copy of the run record · seed-42 canonical run</span>
-    </footer>
+    <div class="exhibit__folder" id="exhibit-folder">
+      <header class="exhibit__head">
+        <div>
+          <p class="mono-label exhibit__eyebrow" id="exhibit-eyebrow">EXHIBIT</p>
+          <h2 id="exhibit-title" class="exhibit__title">Case file</h2>
+        </div>
+        <button class="exhibit__close" id="exhibit-close" type="button" aria-label="Close exhibit">✕ <span>ESC</span></button>
+      </header>
+      <div class="exhibit__tabs" id="exhibit-tabs" role="tablist" aria-label="Exhibit contents"></div>
+      <div class="exhibit__scroll" id="exhibit-scroll"></div>
+      <footer class="exhibit__foot">
+        <span class="mono-label">Certified true copy of the run record · seed-42 canonical run</span>
+      </footer>
+    </div>
   </aside>
 
   <script src="assets/app.js"></script>
