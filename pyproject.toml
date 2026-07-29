@@ -28,6 +28,9 @@ dependencies = [
 # LLM provider SDKs — imported lazily inside src/backends/base.py methods.
 openai = ["openai>=1.40"]
 anthropic = ["anthropic"]
+# Cline gateway (cline-free/glm-5.2) — httpx with HTTP/2, imported lazily inside
+# ClineBackend.generate(); the live endpoint requires HTTP/2 transport.
+cline = ["httpx[http2]>=0.27"]
 # Guardrail models — lazy try/except with regex/lexicon fallbacks.
 #   - presidio-analyzer: src/guardrails/pii.py (`from presidio_analyzer import AnalyzerEngine`)
 #   - detoxify: src/guardrails/toxicity.py (`from detoxify import Detoxify`)
@@ -52,6 +55,7 @@ dev = [
 all = [
     "openai>=1.40",
     "anthropic",
+    "httpx[http2]>=0.27",
     "presidio-analyzer",
     "detoxify",
     "streamlit>=1.30",

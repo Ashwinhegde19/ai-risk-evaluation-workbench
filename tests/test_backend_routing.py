@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from src.backends.base import get_backend
+from src.backends.base import ClineBackend, get_backend
 
 
 class BackendRoutingTest(unittest.TestCase):
@@ -90,6 +90,20 @@ class BackendRoutingTest(unittest.TestCase):
         backend = get_backend("gpt-4o")
         self.assertIsNotNone(backend)
         self.assertEqual(backend.model_name, "gpt-4o")
+
+    def test_cline_model_routes_to_cline_backend(self):
+        """cline-free/glm-5.2 should route to ClineBackend."""
+        with patch.dict(os.environ, {"MOCK": "0"}, clear=False):
+            backend = get_backend("cline-free/glm-5.2")
+            self.assertIsInstance(backend, ClineBackend)
+            self.assertEqual(backend.model_name, "cline-free/glm-5.2")
+
+    def test_cline_model_mock_mode_returns_openai_backend(self):
+        """In mock mode, Cline slugs should return a mock OpenAIBackend."""
+        with patch.dict(os.environ, {"MOCK": "1"}, clear=True):
+            backend = get_backend("cline-free/glm-5.2")
+            self.assertIsNotNone(backend)
+            self.assertEqual(backend.model_name, "cline-free/glm-5.2")
 
 
 if __name__ == "__main__":

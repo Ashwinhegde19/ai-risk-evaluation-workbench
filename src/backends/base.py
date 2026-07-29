@@ -23,6 +23,9 @@ from src.core.config import AppConfig, load_config
 # ``OPEN_MODEL_BASE_URL`` rather than the Kilo gateway.
 OPEN_MODEL_PREFIX = "qwen3-8b"
 
+# Prefix identifying Cline-routed models (e.g. ``cline-free/glm-5.2``).
+CLINE_MODEL_PREFIXES = ("cline-free/", "cline/")
+
 
 class ModelBackend(ABC):
     """Abstract base class for all model backends.
@@ -400,6 +403,172 @@ class LocalBackend(ModelBackend):
         return str(result)
 
 
+class ClineBackend(ModelBackend):
+    """Backend for Cline-routed models (e.g. ``cline-free/glm-5.2``).
+
+    The Cline API requires HTTP/2 and wraps the standard OpenAI chat-completion
+    response inside ``{"data": {...}, "success": true}``.  This backend uses
+    ``httpx`` with ``http2=True`` and unwraps the envelope.
+
+    Token resolution order (fail loud, never mock):
+      1. ``CLINE_API_KEY`` env var — the full ``workos:...`` string, or a bare
+         token (the ``workos:`` prefix is prepended automatically if missing).
+      2. ``~/.cline/data/settings/providers.json`` — the ``accessToken`` field
+         inside ``providers.cline.settings.auth``.
+      3. Raise ``ValueError`` with a clear message.
+
+    Retry: up to 3 attempts with exponential backoff on HTTP 429 / 5xx and on
+    transient ``httpx.TransportError``.
+    """
+
+    DEFAULT_BASE_URL = "https://api.cline.bot/api/v1"
+
+    def __init__(
+        self,
+        model_name: str,
+        base_url: Optional[str] = None,
+        default_temperature: float = 0.7,
+        max_tokens: int = 4096,
+        _transport: Any = None,
+    ) -> None:
+        super().__init__(model_name)
+        self.base_url = (base_url or os.getenv("CLINE_BASE_URL", self.DEFAULT_BASE_URL)).rstrip("/")
+        self.default_temperature = default_temperature
+        self.max_tokens = max_tokens
+        # Private test seam: when set, the httpx client uses this transport and
+        # skips http2 (mock transports do not negotiate HTTP/2). Production calls
+        # leave this None and get a real http2=True client.
+        self._transport = _transport
+
+    # ── token resolution ──────────────────────────────────────────────
+
+    @staticmethod
+    def _read_token() -> str:
+        """Resolve the Cline OAuth token (env → providers.json → raise)."""
+        # 1. Environment variable
+        env_key = os.getenv("CLINE_API_KEY", "").strip()
+        if env_key:
+            return env_key if env_key.startswith("workos:") else f"workos:{env_key}"
+
+        # 2. Cline CLI providers file
+        import json
+        from pathlib import Path
+
+        path = Path.home() / ".cline" / "data" / "settings" / "providers.json"
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                token = (
+                    data.get("providers", {})
+                    .get("cline", {})
+                    .get("settings", {})
+                    .get("auth", {})
+                    .get("accessToken", "")
+                )
+                if token:
+                    return token
+            except (json.JSONDecodeError, OSError):
+                pass  # fall through to raise
+
+        # 3. Fail loud
+        raise ValueError(
+            "Cline token not found. Set CLINE_API_KEY or run the `cline` CLI "
+            "once to refresh ~/.cline/data/settings/providers.json "
+            "(the token expires)."
+        )
+
+    # ── generate ──────────────────────────────────────────────────────
+
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
+    ) -> str:
+        """Generate via the Cline API using ``httpx`` with HTTP/2 + retry.
+
+        Args:
+            prompt: The user prompt.
+            system_prompt: Optional system instructions.
+            temperature: Sampling temperature.
+            max_tokens: Optional per-call max tokens override.
+            seed: Accepted for interface parity (not forwarded).
+
+        Returns:
+            The model's response text (``<think>`` blocks are stripped
+            downstream by the model-agnostic stripper in
+            ``src/redteam/strategies/base.py``).
+        """
+        import time
+
+        import httpx
+
+        token = self._read_token()
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "max_tokens": max_tokens or self.max_tokens,
+            "temperature": temperature,
+            "stream": False,
+        }
+
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(3):
+            try:
+                # Production: real HTTP/2 client. Tests inject a MockTransport
+                # via _transport, which must NOT request http2 (mock transports
+                # do not negotiate it).
+                if self._transport is not None:
+                    client_ctx = httpx.Client(transport=self._transport)
+                else:
+                    client_ctx = httpx.Client(http2=True, timeout=120.0)
+                with client_ctx as client:
+                    resp = client.post(url, json=payload, headers=headers)
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    last_exc = RuntimeError(
+                        f"Cline API HTTP {resp.status_code}: {resp.text[:200]}"
+                    )
+                    time.sleep(min(2 ** attempt, 8))
+                    continue
+                resp.raise_for_status()
+                body = resp.json()
+                break
+            except httpx.TransportError as exc:
+                last_exc = exc
+                time.sleep(min(2 ** attempt, 8))
+                continue
+        else:
+            raise RuntimeError(
+                f"Cline API failed after 3 attempts: {last_exc}"
+            ) from last_exc
+
+        # Unwrap the Cline envelope: {"data": {...}, "success": true}
+        if body.get("success") is not True:
+            raise RuntimeError(
+                f"Cline API returned success=false: {str(body)[:300]}"
+            )
+
+        data = body.get("data", body)
+        choices = data.get("choices", [])
+        if not choices:
+            raise RuntimeError(f"Cline API returned no choices: {str(body)[:300]}")
+
+        return choices[0].get("message", {}).get("content", "")
+
+
 def _infer_provider(model_name: str) -> str:
     """Infer a provider from a model name when none is configured.
 
@@ -455,6 +624,41 @@ def _is_frontier_slug(model_name: str) -> bool:
         ``True`` when the slug contains a ``provider/`` namespace prefix.
     """
     return "/" in model_name
+
+
+def _is_cline_model(model_name: str) -> bool:
+    """Return whether a slug refers to a Cline-routed model.
+
+    Args:
+        model_name: The model slug (e.g. ``cline-free/glm-5.2``).
+
+    Returns:
+        ``True`` when the slug starts with ``cline-free/`` or ``cline/``.
+    """
+    lowered = model_name.lower()
+    return lowered.startswith(CLINE_MODEL_PREFIXES)
+
+
+def _resolve_cline_model(model_name: str) -> ModelBackend:
+    """Build a backend for a Cline-routed model.
+
+    The slug is passed through VERBATIM as the ``model`` field (Cline expects
+    the exact string ``cline-free/glm-5.2``, not a stripped id).
+
+    Args:
+        model_name: The Cline slug (e.g. ``cline-free/glm-5.2``).
+
+    Returns:
+        A :class:`ClineBackend` instance.
+    """
+    base_url = os.getenv("CLINE_BASE_URL", ClineBackend.DEFAULT_BASE_URL)
+    print(
+        f"[backend] target={model_name} base_url={base_url} "
+        f"mock={'on' if _is_mock_enabled() else 'off'}"
+    )
+    if _is_mock_enabled():
+        return OpenAIBackend(model_name=model_name, api_key="mock", base_url="http://mock.local/v1")
+    return ClineBackend(model_name=model_name, base_url=base_url)
 
 
 def _resolve_open_model(model_name: str) -> ModelBackend:
@@ -546,6 +750,8 @@ def get_backend(
     # are selected purely by name, independent of config.yaml contents.
     if _is_open_model(model_name):
         return _resolve_open_model(model_name)
+    if _is_cline_model(model_name):
+        return _resolve_cline_model(model_name)
     if _is_frontier_slug(model_name):
         return _resolve_frontier_model(model_name)
 
@@ -594,6 +800,8 @@ __all__ = [
     "OpenAIBackend",
     "AnthropicBackend",
     "LocalBackend",
+    "ClineBackend",
     "get_backend",
     "OPEN_MODEL_PREFIX",
+    "CLINE_MODEL_PREFIXES",
 ]
