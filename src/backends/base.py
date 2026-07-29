@@ -497,15 +497,20 @@ class ClineBackend(ModelBackend):
             seed: Accepted for interface parity (not forwarded).
 
         Returns:
-            The model's response text (``<think>`` blocks are stripped
+            The model's response text (reasoning blocks are stripped
             downstream by the model-agnostic stripper in
             ``src/redteam/strategies/base.py``).
         """
+        # Resolve credentials FIRST so a missing / expired token raises a clear
+        # ValueError even on installs that lack httpx (e.g. the CI light install,
+        # where this guards the "never silently mock" guarantee), and so we never
+        # set up transport for a request we cannot authenticate.
+        token = self._read_token()
+
         import time
 
         import httpx
 
-        token = self._read_token()
         messages: list[dict[str, str]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
