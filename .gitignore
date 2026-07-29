@@ -29,6 +29,7 @@ hf_cache/
 # Canonical / shipped artifacts that ARE tracked despite the rules above, and
 # must also reach the Hugging Face Space mirror.
 !results/redteam_findings.json
+!results/compliance_report_model.json
 !results/eval_results_latest.json
 !results/unlabelled_eval_results.csv
 !reports/unlabelled_evaluation_report.pdf

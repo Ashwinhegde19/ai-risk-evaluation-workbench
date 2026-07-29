@@ -97,7 +97,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/scores_history.json
+          git add -f data/scores_history.json || true
           if git diff --cached --quiet; then
             echo "No score-history changes to commit."
           else
