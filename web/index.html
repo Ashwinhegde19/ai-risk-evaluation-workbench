@@ -20,37 +20,37 @@
 
   <a class="skip-link" href="#verdict-board">Skip to verdict board</a>
 
-  <!-- ══ DOCKET SPINE (desktop) ══ -->
-  <aside class="spine" aria-label="Docket navigation">
-    <span class="spine__mark" aria-hidden="true">V·26</span>
-    <p class="spine__case">Docket 2026-AI-Redteam · Seed 42 · Canonical</p>
-    <nav class="spine__nav" aria-label="Sections">
-      <a href="#verdict-board" data-spy="verdict-board"><i></i><span>Verdict</span></a>
-      <a href="#battlefield" data-spy="battlefield"><i></i><span>Battlefield</span></a>
-      <a href="#vault" data-spy="vault"><i></i><span>Evidence</span></a>
-      <a href="#tribunal" data-spy="tribunal"><i></i><span>Tribunal</span></a>
-      <a href="#audit" data-spy="audit"><i></i><span>Instrument</span></a>
-      <a href="#methods" data-spy="methods"><i></i><span>Methods</span></a>
-    </nav>
-    <button class="spine__theme" id="theme-toggle" type="button" aria-pressed="false" title="Switch to archival (light) dossier">
-      <span class="spine__theme-ic" aria-hidden="true">◐</span>
-      <span class="spine__theme-lbl">Archival</span>
-    </button>
-  </aside>
+  <!-- ══ DOCKET BAR ══ -->
+  <header class="bar" id="site-bar">
+    <div class="bar__row">
+      <a class="bar__brand" href="#run-banner">
+        <span class="bar__brand-accent" aria-hidden="true"></span>
+        <span class="bar__brand-name">VERDICT</span>
+        <span class="bar__brand-chip">V·26</span>
+      </a>
 
-  <!-- ══ TOP BAR (mobile) ══ -->
-  <header class="topbar">
-    <span class="topbar__brand">VERDICT</span>
-    <span class="topbar__run">docket 2026-ai-redteam · seed 42</span>
-    <nav class="topbar__links" aria-label="Sections">
-      <a href="#verdict-board">Verdict</a>
-      <a href="#battlefield">Battlefield</a>
-      <a href="#vault">Evidence</a>
-      <a href="#tribunal">Tribunal</a>
-      <a href="#audit">Instrument</a>
-      <a href="#methods">Methods</a>
-    </nav>
-    <button class="topbar__theme" id="theme-toggle-m" type="button" aria-pressed="false" aria-label="Switch to archival (light) dossier">◐</button>
+      <nav class="bar__nav" id="bar-nav" aria-label="Sections">
+        <a href="#verdict-board" data-spy="verdict-board">Verdict</a>
+        <a href="#battlefield" data-spy="battlefield">Battlefield</a>
+        <a href="#vault" data-spy="vault">Evidence</a>
+        <a href="#tribunal" data-spy="tribunal">Tribunal</a>
+        <a href="#audit" data-spy="audit">Instrument</a>
+        <a href="#methods" data-spy="methods">Methods</a>
+      </nav>
+
+      <div class="bar__end">
+        <span class="bar__docket">Docket 2026-AI-Redteam · Seed 42 · Canonical</span>
+        <button class="bar__theme" id="theme-toggle" type="button" aria-pressed="false" title="Switch to archival (light) dossier">
+          <span class="bar__theme-ic" aria-hidden="true">◐</span>
+          <span class="bar__theme-lbl">Archival</span>
+        </button>
+        <button class="bar__burger" id="bar-burger" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open section menu">
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
   </header>
 
   <main class="console">

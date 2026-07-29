@@ -1127,10 +1127,10 @@
     for (var k = 0; k < targets.length; k++) io.observe(targets[k]);
   }
 
-  /* ── docket spine scrollspy ── */
+  /* ── docket bar scrollspy ── */
 
   function setupScrollspy() {
-    var links = document.querySelectorAll('.spine__nav a[data-spy]');
+    var links = document.querySelectorAll('.bar__nav a[data-spy]');
     if (!links.length || !("IntersectionObserver" in window)) return;
     var byId = {};
     for (var i = 0; i < links.length; i++) byId[links[i].dataset.spy] = links[i];
@@ -1149,10 +1149,36 @@
     }
   }
 
+  /* ── mobile disclosure menu ── */
+
+  function bindBarMenu() {
+    var bar = document.getElementById("site-bar");
+    var burger = document.getElementById("bar-burger");
+    var nav = document.getElementById("bar-nav");
+    if (!bar || !burger || !nav) return;
+    function setOpen(open) {
+      bar.classList.toggle("nav-open", open);
+      burger.setAttribute("aria-expanded", open ? "true" : "false");
+      burger.setAttribute("aria-label", open ? "Close section menu" : "Open section menu");
+    }
+    burger.addEventListener("click", function () {
+      setOpen(bar.getAttribute("class").indexOf("nav-open") === -1);
+    });
+    nav.addEventListener("click", function (e) {
+      if (e.target.closest("a")) setOpen(false);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") setOpen(false);
+    });
+    window.addEventListener("resize", function () {
+      if (window.innerWidth > 860) setOpen(false);
+    });
+  }
+
   /* ── archival / evidence-room theme swap ── */
 
   function bindTheme() {
-    var btns = [document.getElementById("theme-toggle"), document.getElementById("theme-toggle-m")];
+    var btns = [document.getElementById("theme-toggle")];
     var stored = null;
     try { stored = localStorage.getItem("verdict-theme"); } catch (e) { /* private mode */ }
     if (stored === "light") document.documentElement.setAttribute("data-theme", "light");
@@ -1195,6 +1221,7 @@
     renderAudit();
     setupReveal();
     setupScrollspy();
+    bindBarMenu();
     bindExhibit();
     bindTheme();
 
