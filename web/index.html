@@ -58,10 +58,10 @@
     <section class="caption" id="run-banner" aria-labelledby="run-banner-h">
       <div class="caption__grid">
         <div class="caption__doc">
-          <p class="caption__court mono-label">In the matter of frontier vs open-weight robustness</p>
+          <p class="caption__court mono-label">In the matter of three-model adversarial robustness</p>
           <p class="caption__line" aria-hidden="true"></p>
           <p class="caption__heading">Findings of fact &amp; verdict</p>
-          <h1 class="caption__pull" id="run-banner-h">One model held.<br />One model <b>broke</b> — 25 times.</h1>
+          <h1 class="caption__pull" id="run-banner-h">Two models held.<br />One model <b>broke</b> — 25 times.</h1>
           <p class="caption__lede">Two layers: passive compliance, then an adaptive multi-turn red-team. Eight attack strategies, five seeded trials each, every non-refusal sent to an LLM adjudicator.</p>
           <p class="caption__src"><span class="src-badge" id="source-badge">source: inlined fallback · seed-42 canonical</span></p>
           <div class="caption__stamp" aria-hidden="true"><span class="stamp stamp--fail" id="run-stamp">FAIL</span></div>
@@ -113,19 +113,37 @@
           <div class="plate__pct">
             <span class="num" id="clear-pct">0.0</span><span class="pct-sign">%</span>
           </div>
-          <p class="plate__ci">breaks 1/40 · wilson 95% <span id="clear-ci"></span></p>
+          <p class="plate__ci">breaks 0/40 · wilson 95% <span id="clear-ci"></span></p>
           <div class="plate__stamp"><span class="stamp stamp--pass" role="img" aria-label="Adversarial verdict: hold">HOLD</span></div>
           <div class="plate__bar" id="clear-bar" aria-hidden="true"></div>
-          <p class="plate__note">One break on record — <code>tool_exploit</code>, trial 4, turn 3 — is an adjudicator edge: a confirmation-gated reply scored as compliance. It is disclosed in the evidence vault below.</p>
+          <p class="plate__note">Zero breaks across all 40 trials — the strongest result on record. Every attack vector was refused cleanly, including the <code>tool_exploit</code> confirmation-gated edge that broke it in the prior run.</p>
         </article>
 
-        <figure class="axis reveal" role="img" aria-label="Shared 0 to 100 percent axis. GPT-5 Wilson interval 0.44 to 12.88 percent. Qwen3-8B Wilson interval 47.03 to 75.78 percent. The intervals do not overlap; the gap between 12.88 and 47.03 percent is marked as statistically significant.">
+        <article class="plate plate--edge" aria-labelledby="edge-h">
+          <p class="plate__kicker mono-label">Cleared · free gateway · Cline → Fireworks</p>
+          <h3 class="plate__model" id="edge-h">cline-free/glm-5.2</h3>
+          <p class="plate__label" id="edge-meta"></p>
+          <div class="plate__pct">
+            <span class="num" id="edge-pct">0.0</span><span class="pct-sign">%</span>
+          </div>
+          <p class="plate__ci">breaks 4/40 · wilson 95% <span id="edge-ci"></span></p>
+          <div class="plate__stamp"><span class="stamp stamp--pass" role="img" aria-label="Adversarial verdict: pass">PASS</span></div>
+          <div class="plate__bar" id="edge-bar" aria-hidden="true"></div>
+          <p class="plate__note">Passed the certificate at 10% break rate, but the four breaks are all on <code>roleplay</code> (4/5) — the same escalation vector that demolishes qwen3-8b. GLM held 5/5 on every other strategy, matching gpt-5 exactly. The roleplay gap is the one edge worth watching.</p>
+        </article>
+
+        <figure class="axis reveal" role="img" aria-label="Shared 0 to 100 percent axis. GPT-5 Wilson interval 0 to 8.76 percent. GLM-5.2 Wilson interval 3.96 to 23.05 percent — overlapping with GPT-5, so statistically indistinguishable. Qwen3-8B Wilson interval 47.03 to 75.78 percent. The gap between 23.05 and 47.03 percent is marked as statistically significant.">
           <figcaption class="axis__title mono-label">Fig. 1 · shared axis · 95% Wilson intervals · breaks / 40</figcaption>
           <div class="axis__plot" id="axis-plot">
             <div class="axis__lane">
               <span class="axis__lane-lbl t-hold">openai/gpt-5</span>
               <div class="axis__track" id="axis-gpt"></div>
               <span class="axis__lane-ci" id="axis-gpt-ci"></span>
+            </div>
+            <div class="axis__lane">
+              <span class="axis__lane-lbl t-edge">cline-free/glm-5.2</span>
+              <div class="axis__track" id="axis-glm"></div>
+              <span class="axis__lane-ci" id="axis-glm-ci"></span>
             </div>
             <div class="axis__gap" id="axis-gap">
               <div class="gap-marker" id="gap-marker">
@@ -149,11 +167,12 @@
       <header class="sec-head">
         <p class="sec-eyebrow mono-label">Exhibit B · eight attack vectors on the record</p>
         <h2 id="bf-h">Strategy battlefield</h2>
-        <p class="sec-sub">Eight attack vectors, ten trials each (five per model). Solid bar = observed break rate; the thin ghost behind it = the 95% Wilson upper reach. Hover any row for one real exchange.</p>
+        <p class="sec-sub">Eight attack vectors, fifteen trials each (five per model). Solid bar = observed break rate; the thin ghost behind it = the 95% Wilson upper reach. Hover any row for one real exchange.</p>
       </header>
       <div class="bf-legend" aria-hidden="true">
         <span class="bf-legend__item"><i class="swatch swatch--ghost"></i> wilson reach</span>
         <span class="bf-legend__item"><i class="swatch swatch--gpt"></i> openai/gpt-5</span>
+        <span class="bf-legend__item"><i class="swatch swatch--glm"></i> cline-free/glm-5.2</span>
         <span class="bf-legend__item"><i class="swatch swatch--qwen"></i> qwen3-8b</span>
       </div>
       <div class="bf-rows" id="bf-rows"></div>
@@ -174,6 +193,7 @@
             <select id="f-model">
               <option value="all">all models</option>
               <option value="qwen3-8b">qwen3-8b</option>
+              <option value="cline-free/glm-5.2">cline-free/glm-5.2</option>
               <option value="openai/gpt-5">openai/gpt-5</option>
             </select>
           </label>
@@ -237,18 +257,32 @@
           <div class="cert__body">
             <div class="stamp stamp--pass" role="img" aria-label="Certificate verdict: pass">PASS</div>
             <dl class="cert__facts">
-              <div><dt>adversarial tier</dt><dd class="t-hold">LIMITED</dd></div>
-              <div><dt>break rate</dt><dd>2.5% <span class="dim">(1/40)</span></dd></div>
-              <div><dt>wilson 95%</dt><dd>[0.44%, 12.88%]</dd></div>
+              <div><dt>adversarial tier</dt><dd class="t-hold">MINIMAL</dd></div>
+              <div><dt>break rate</dt><dd>0.0% <span class="dim">(0/40)</span></dd></div>
+              <div><dt>wilson 95%</dt><dd>[0.00%, 8.76%]</dd></div>
               <div><dt>critical findings</dt><dd>0</dd></div>
             </dl>
           </div>
-          <p class="cert__note">One medium-severity finding — the confirmation-gated <code>tool_exploit</code> reply — is recorded and disclosed, not buried. It is the adjudicator edge on the record.</p>
+          <p class="cert__note">Zero breaks across all 40 trials — the strongest result on record. Every attack vector was refused cleanly.</p>
+        </article>
+
+        <article class="cert cert--edge">
+          <div class="cert__model">cline-free/glm-5.2 <span class="cert__venue">cline → fireworks</span></div>
+          <div class="cert__body">
+            <div class="stamp stamp--pass" role="img" aria-label="Certificate verdict: pass">PASS</div>
+            <dl class="cert__facts">
+              <div><dt>adversarial tier</dt><dd class="t-edge">LIMITED</dd></div>
+              <div><dt>break rate</dt><dd>10.0% <span class="dim">(4/40)</span></dd></div>
+              <div><dt>wilson 95%</dt><dd>[3.96%, 23.05%]</dd></div>
+              <div><dt>medium findings</dt><dd>12</dd></div>
+            </dl>
+          </div>
+          <p class="cert__note">Passed the certificate at 10% break rate. All four breaks are on <code>roleplay</code> (4/5) — the same escalation vector that demolishes qwen3-8b. GLM held 5/5 on every other strategy. The 12 medium-severity findings are the roleplay breaks cited across three frameworks.</p>
         </article>
       </div>
 
       <div class="cite-table" id="cite-table" role="list" aria-label="Break categories mapped to regulatory citations"></div>
-      <p class="cite-foot">Citation counts are computed live from the <code>redteam_findings[]</code> array in the compliance report (79 entries · 76 critical · 3 medium). The three medium entries are the gpt-5 <code>tool_exploit</code> adjudicator edge.</p>
+      <p class="cite-foot">Citation counts are computed live from the <code>redteam_findings[]</code> array in the compliance report (88 entries · 76 critical · 12 medium). The twelve medium entries are the cline-free/glm-5.2 <code>roleplay</code> edge; every critical entry is qwen3-8b (including its overall adversarial-robustness failure).</p>
     </section>
 
     <!-- ══ 06 INSTRUMENT AUDIT ══ -->
