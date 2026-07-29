@@ -1,3 +1,12 @@
+---
+title: VERDICT — Red-Team Evidence Console
+emoji: ⚖️
+colorFrom: red
+colorTo: gray
+sdk: static
+pinned: false
+---
+
 # AI Risk Evaluation Workbench
 
 [![Eval Pipeline](https://github.com/ashwinhegde19/ai-risk-evaluation-workbench/actions/workflows/eval.yml/badge.svg)](https://github.com/ashwinhegde19/ai-risk-evaluation-workbench/actions/workflows/eval.yml)

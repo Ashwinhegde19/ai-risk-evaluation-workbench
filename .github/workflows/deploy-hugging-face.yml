@@ -13,42 +13,38 @@ concurrency:
 permissions:
   contents: read
 
+# The Hugging Face Space is a *static* site (sdk: static, configured in the
+# README frontmatter): it serves the VERDICT evidence console in web/ straight
+# off the CDN with no Python runtime, so torch/transformers/chainlit are not
+# needed here. The console reads its numbers live from results/*.json, so every
+# push that updates those artifacts is reflected on the Space automatically.
+
 jobs:
+  # Static-asset gate: confirm the console and its data are present and wired
+  # correctly before anything is synced. No heavy dependencies, no Python app
+  # boot — a static Space has nothing to import.
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install runtime and test dependencies
+      - name: Verify static console assets
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
-
-      - name: Run unit tests
-        run: python -m pytest -q
-
-      - name: Import smoke test
-        # Ensure the app module imports cleanly. A broken import (e.g. from
-        # dependency drift) must fail the build before any deployment happens.
-        run: |
-          python - <<'PY'
-          import importlib
-          # app.py starts Chainlit callbacks at import time; importing the
-          # orchestration layer pinpoints core wiring without booting the server.
-          for module in ("assistant.core", "assistant.guardrails",
-                         "evals.claim_verification", "evals.policy_inference",
-                         "models.factory"):
-              importlib.import_module(module)
-          print("Import smoke test passed.")
-          PY
+          set -euo pipefail
+          test -f index.html            || { echo "missing root redirect index.html"; exit 1; }
+          test -f web/index.html        || { echo "missing web/index.html"; exit 1; }
+          test -f web/assets/styles.css || { echo "missing web/assets/styles.css"; exit 1; }
+          test -f web/assets/app.js     || { echo "missing web/assets/app.js"; exit 1; }
+          test -f results/redteam_findings.json        || { echo "missing results/redteam_findings.json"; exit 1; }
+          test -f results/compliance_report_model.json || { echo "missing results/compliance_report_model.json"; exit 1; }
+          # The console must not carry vertical-text nav labels (regression guard).
+          if grep -q 'writing-mode: vertical-rl' web/assets/styles.css \
+             && grep -q 'spine__nav' web/assets/styles.css; then
+            echo "vertical-text nav rail still present in web/assets/styles.css"; exit 1
+          fi
+          echo "Static console assets OK."
 
   deploy:
     needs: test
@@ -65,6 +61,20 @@ jobs:
 
       - name: Install Hugging Face client
         run: python -m pip install "huggingface_hub==1.24.0"
+
+      - name: Materialize web/results (follow the symlink into real files)
+        # web/results is a symlink to ../results so a local `python -m http.server`
+        # works; some static hosts do not follow symlinks, which would make the
+        # served page silently fall back to its inlined dataset. Replace the link
+        # with a real copy in the runner's working tree so the synced Space always
+        # serves the live artifacts. (Not committed — only uploaded.)
+        run: |
+          set -euo pipefail
+          rm -f web/results
+          cp -RL results web/results
+          test -f web/results/redteam_findings.json
+          test -f web/results/compliance_report_model.json
+          echo "web/results materialized: $(du -sh web/results | cut -f1)"
 
       - name: Sync repository to Hugging Face Space
         env:

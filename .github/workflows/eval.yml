@@ -47,7 +47,18 @@ jobs:
           pip install "pydantic>=2,<2.11" pyyaml pytest
 
       - name: Run test suite
-        run: python -m pytest tests/ -q
+        # Scope to the platform under test (src/). The ignored files exercise
+        # the deprecated Chainlit app's top-level evals/ + reports/ pipeline
+        # (need pandas / matplotlib / python-dotenv) or the Streamlit dashboard
+        # (needs streamlit), which this intentionally-light install omits
+        # (no torch/transformers either). The new platform's coverage lives in
+        # test_redteam_*, test_report_generate, test_reports, test_regression, etc.
+        run: |
+          python -m pytest tests/ -q \
+            --ignore=tests/test_judge.py \
+            --ignore=tests/test_regression_evals.py \
+            --ignore=tests/test_report.py \
+            --ignore=tests/test_dashboard.py
 
       - name: Run evaluation pipeline (mock, offline)
         id: eval
