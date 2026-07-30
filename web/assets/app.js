@@ -1269,12 +1269,195 @@
     sync();
   }
 
+  /* ── 02b charts — bar chart + heatmap ── */
+
+  function renderCharts() {
+    renderBarChart();
+    renderHeatmap();
+  }
+
+  function renderBarChart() {
+    var wrap = document.getElementById("chart-bar-wrap");
+    if (!wrap) return;
+    var pm = rt().per_model;
+    var models = MODELS.filter(function (md) { return pm[md.slug]; });
+    var n = models.length;
+    if (!n) { wrap.innerHTML = ""; return; }
+
+    var W = 420, H = 260;
+    var pad = { top: 28, right: 20, bottom: 48, left: 44 };
+    var plotW = W - pad.left - pad.right;
+    var plotH = H - pad.top - pad.bottom;
+    var barW = Math.min(24, (plotW / n) * 0.55);
+    var gap = (plotW - barW * n) / (n + 1);
+
+    var hueFill = { hold: "var(--cleared)", edge: "var(--gold-text)", breach: "var(--flag)" };
+    var hueStroke = { hold: "var(--cleared-deep)", edge: "var(--gold-ink)", breach: "var(--flag-deep)" };
+
+    var svg = '<svg viewBox="0 0 ' + W + " " + H + '" xmlns="http://www.w3.org/2000/svg" role="img">';
+
+    /* gridlines at 0, 25, 50, 75, 100 */
+    var ticks = [0, 25, 50, 75, 100];
+    for (var t = 0; t < ticks.length; t++) {
+      var y = pad.top + plotH - (ticks[t] / 100) * plotH;
+      svg += '<line class="chart-bar__grid" x1="' + pad.left + '" y1="' + y + '" x2="' + (W - pad.right) + '" y2="' + y + '"/>';
+      svg += '<text class="chart-bar__axis-label" x="' + (pad.left - 6) + '" y="' + (y + 3) + '" text-anchor="end">' + ticks[t] + "%</text>";
+    }
+
+    /* bars */
+    for (var i = 0; i < n; i++) {
+      var md = models[i];
+      var m = pm[md.slug];
+      var rate = m.rate * 100;
+      var lo = m.wilson_low * 100;
+      var hi = m.wilson_high * 100;
+      var x = pad.left + gap + i * (barW + gap);
+      var barH = (rate / 100) * plotH;
+      var barY = pad.top + plotH - barH;
+      var fill = hueFill[md.hue] || hueFill.hold;
+      var stroke = hueStroke[md.hue] || hueStroke.hold;
+
+      /* bar with 4px rounded top */
+      svg += '<rect class="chart-bar__bar" x="' + x + '" y="' + barY + '" width="' + barW + '" height="' + barH +
+        '" rx="4" ry="4" fill="' + fill + '" data-model="' + escapeHtml(md.slug) +
+        '" data-rate="' + rate.toFixed(1) + '" data-lo="' + lo.toFixed(1) + '" data-hi="' + hi.toFixed(1) + '"/>';
+
+      /* error bar (Wilson CI) */
+      var cx = x + barW / 2;
+      var errTop = pad.top + plotH - (hi / 100) * plotH;
+      var errBot = pad.top + plotH - (lo / 100) * plotH;
+      svg += '<line class="chart-bar__err" x1="' + cx + '" y1="' + errTop + '" x2="' + cx + '" y2="' + errBot + '" stroke="' + stroke + '"/>';
+      svg += '<line class="chart-bar__cap" x1="' + (cx - 5) + '" y1="' + errTop + '" x2="' + (cx + 5) + '" y2="' + errTop + '" stroke="' + stroke + '"/>';
+      svg += '<line class="chart-bar__cap" x1="' + (cx - 5) + '" y1="' + errBot + '" x2="' + (cx + 5) + '" y2="' + errBot + '" stroke="' + stroke + '"/>';
+
+      /* value label on cap */
+      svg += '<text class="chart-bar__value" x="' + cx + '" y="' + (barY - 6) + '">' + rate.toFixed(1) + "%</text>";
+
+      /* model label below */
+      svg += '<text class="chart-bar__label" x="' + cx + '" y="' + (H - pad.bottom + 16) + '" text-anchor="middle">' + escapeHtml(md.short) + "</text>";
+    }
+
+    svg += "</svg>";
+    wrap.innerHTML = svg;
+
+    /* tooltip */
+    var tip = ensureChartTip(wrap);
+    wrap.querySelectorAll(".chart-bar__bar").forEach(function (bar) {
+      bar.addEventListener("mouseenter", function (e) {
+        var model = bar.getAttribute("data-model");
+        var rate = bar.getAttribute("data-rate");
+        var lo = bar.getAttribute("data-lo");
+        var hi = bar.getAttribute("data-hi");
+        tip.textContent = model + " " + rate + "%  [" + lo + "%, " + hi + "%]";
+        tip.classList.add("show");
+        positionTip(tip, e, wrap);
+      });
+      bar.addEventListener("mousemove", function (e) { positionTip(tip, e, wrap); });
+      bar.addEventListener("mouseleave", function () { tip.classList.remove("show"); });
+    });
+  }
+
+  function renderHeatmap() {
+    var wrap = document.getElementById("chart-heat-wrap");
+    if (!wrap) return;
+    var d = rt();
+    var pm = d.per_model;
+    var models = MODELS.filter(function (md) { return pm[md.slug]; });
+    var nModels = models.length;
+    var strategies = Object.keys(d.per_strategy);
+    var nStrats = strategies.length;
+    if (!nModels || !nStrats) { wrap.innerHTML = ""; return; }
+
+    /* compute per-strategy per-model break rates */
+    var byTarget = perStrategyByTarget();
+
+    var cellW = 52, cellH = 22;
+    var labelW = 110, labelH = 28;
+    var W = labelW + nModels * cellW + 12;
+    var H = labelH + nStrats * cellH + 8;
+
+    var svg = '<svg viewBox="0 0 ' + W + " " + H + '" xmlns="http://www.w3.org/2000/svg" role="img">';
+
+    /* column headers (model names) */
+    for (var c = 0; c < nModels; c++) {
+      var cx = labelW + c * cellW + cellW / 2;
+      svg += '<text class="chart-heat__col-label" x="' + cx + '" y="' + (labelH - 8) + '">' + escapeHtml(models[c].short) + "</text>";
+    }
+
+    /* rows */
+    for (var r = 0; r < nStrats; r++) {
+      var strat = strategies[r];
+      var ry = labelH + r * cellH;
+      /* row label */
+      svg += '<text class="chart-heat__row-label" x="' + (labelW - 8) + '" y="' + (ry + cellH / 2) + '">' + escapeHtml(strat) + "</text>";
+
+      for (var c2 = 0; c2 < nModels; c2++) {
+        var md2 = models[c2];
+        var cell = byTarget[strat] ? byTarget[strat][md2.slug] : null;
+        var rate2 = cell ? (cell.total ? cell.breaks / cell.total : 0) : 0;
+        var cx2 = labelW + c2 * cellW;
+        /* cinnabar opacity ramp: 0% = transparent, 100% = full */
+        var opacity = Math.max(0.06, rate2 * 0.92);
+        var textColor = rate2 > 0.5 ? "var(--paper)" : "var(--tx-dim)";
+        svg += '<rect class="chart-heat__cell" x="' + cx2 + '" y="' + ry + '" width="' + (cellW - 2) + '" height="' + (cellH - 2) +
+          '" rx="2" fill="var(--flag)" opacity="' + opacity.toFixed(3) +
+          '" data-strat="' + escapeHtml(strat) + '" data-model="' + escapeHtml(md2.slug) +
+          '" data-rate="' + (rate2 * 100).toFixed(0) + '" data-breaks="' + (cell ? cell.breaks : 0) +
+          '" data-total="' + (cell ? cell.total : 0) + '"/>';
+        /* value text */
+        svg += '<text class="chart-heat__value" x="' + (cx2 + (cellW - 2) / 2) + '" y="' + (ry + cellH / 2) +
+          '" fill="' + textColor + '">' + (cell ? cell.breaks + "/" + cell.total : "–") + "</text>";
+      }
+    }
+
+    svg += "</svg>";
+    wrap.innerHTML = svg;
+
+    /* tooltip */
+    var tip2 = ensureChartTip(wrap);
+    wrap.querySelectorAll(".chart-heat__cell").forEach(function (cell) {
+      cell.addEventListener("mouseenter", function (e) {
+        var strat = cell.getAttribute("data-strat");
+        var model = cell.getAttribute("data-model");
+        var rate3 = cell.getAttribute("data-rate");
+        var breaks = cell.getAttribute("data-breaks");
+        var total = cell.getAttribute("data-total");
+        tip2.textContent = strat + " × " + model + "  " + breaks + "/" + total + "  (" + rate3 + "%)";
+        tip2.classList.add("show");
+        positionTip(tip2, e, wrap);
+      });
+      cell.addEventListener("mousemove", function (e) { positionTip(tip2, e, wrap); });
+      cell.addEventListener("mouseleave", function () { tip2.classList.remove("show"); });
+    });
+  }
+
+  function ensureChartTip(wrap) {
+    var tip = wrap.querySelector(".chart-tip");
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.className = "chart-tip";
+      wrap.appendChild(tip);
+    }
+    return tip;
+  }
+
+  function positionTip(tip, e, wrap) {
+    var rect = wrap.getBoundingClientRect();
+    var x = e.clientX - rect.left + 12;
+    var y = e.clientY - rect.top - 8;
+    if (x + tip.offsetWidth > rect.width) x = e.clientX - rect.left - tip.offsetWidth - 8;
+    if (y < 0) y = 4;
+    tip.style.left = x + "px";
+    tip.style.top = y + "px";
+  }
+
   /* ── boot ── */
 
   function render() {
     renderBanner();
     renderTicker();
     renderBoard();
+    renderCharts();
     renderBattlefield();
     renderVaultControls();
     applyVault(false);

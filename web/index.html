@@ -31,6 +31,7 @@
 
       <nav class="bar__nav" id="bar-nav" aria-label="Sections">
         <a href="#verdict-board" data-spy="verdict-board">Verdict</a>
+        <a href="#charts" data-spy="charts">Charts</a>
         <a href="#battlefield" data-spy="battlefield">Battlefield</a>
         <a href="#vault" data-spy="vault">Evidence</a>
         <a href="#tribunal" data-spy="tribunal">Tribunal</a>
@@ -158,6 +159,27 @@
             <div class="axis__ticks" id="axis-ticks" aria-hidden="true"></div>
           </div>
           <p class="axis__note" id="gap-note"></p>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ══ 02b CHARTS — bar chart + heatmap ══ -->
+    <section class="charts reveal" id="charts" aria-labelledby="charts-h">
+      <header class="sec-head">
+        <p class="sec-eyebrow mono-label">Exhibit A+ · visual comparison · scales with N models</p>
+        <h2 id="charts-h">Charts</h2>
+        <p class="sec-sub">Two views of the same data: a bar chart with 95% Wilson confidence intervals (the leaderboard), and a strategy × model heatmap (the weakness map). Both grow naturally as models are added — no redesign needed.</p>
+      </header>
+
+      <div class="charts__grid">
+        <figure class="chart chart--bar" role="img" aria-label="Bar chart of per-model adversarial break rate with 95% Wilson confidence interval error bars. GPT-5 and GLM-5.2 both at 10%, qwen3-8b at 62.5%.">
+          <figcaption class="chart__title mono-label">Fig. 2 · adversarial break rate per model · 95% Wilson CI</figcaption>
+          <div class="chart__svg-wrap" id="chart-bar-wrap"></div>
+        </figure>
+
+        <figure class="chart chart--heat" role="img" aria-label="Heatmap of break rate per strategy per model. Rows are the eight attack strategies; columns are the three models. Darker cells indicate higher break rates.">
+          <figcaption class="chart__title mono-label">Fig. 3 · strategy × model break-rate heatmap</figcaption>
+          <div class="chart__svg-wrap" id="chart-heat-wrap"></div>
         </figure>
       </div>
     </section>

@@ -1800,6 +1800,58 @@ section, footer.methods { padding: 3.6rem 0 1.2rem; }
   .plate__pct .num { font-size: 3rem; }
 }
 
+/* ── 02b charts — bar chart + heatmap ── */
+
+.charts__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(1.2rem, 2.6vw, 2.2rem);
+  align-items: start;
+}
+.chart {
+  background: var(--canvas-2);
+  border: 1px solid var(--rule);
+  padding: 1.3rem 1.6rem 1.4rem;
+  transition: background-color .35s ease, border-color .35s ease;
+}
+.chart__title { margin-bottom: 1rem; }
+.chart__svg-wrap { position: relative; width: 100%; }
+.chart__svg-wrap svg { display: block; width: 100%; height: auto; }
+
+/* bar chart elements */
+.chart-bar__bar { transition: opacity .15s ease; }
+.chart-bar__bar:hover { opacity: .85; }
+.chart-bar__err { stroke-width: 2; stroke-linecap: round; }
+.chart-bar__cap { stroke-width: 2; stroke-linecap: round; }
+.chart-bar__label { font-family: var(--font-mono); font-size: 11px; fill: var(--tx); }
+.chart-bar__value { font-family: var(--font-mono); font-size: 10px; fill: var(--tx-dim); text-anchor: middle; }
+.chart-bar__grid { stroke: var(--rule); stroke-width: 1; }
+.chart-bar__axis-label { font-family: var(--font-mono); font-size: 9px; fill: var(--tx-dim); }
+
+/* heatmap elements */
+.chart-heat__cell { transition: opacity .15s ease; }
+.chart-heat__cell:hover { opacity: .8; stroke: var(--tx); stroke-width: 1.5; }
+.chart-heat__label { font-family: var(--font-mono); font-size: 9px; fill: var(--tx-dim); }
+.chart-heat__value { font-family: var(--font-mono); font-size: 9px; text-anchor: middle; dominant-baseline: central; }
+.chart-heat__row-label { font-family: var(--font-mono); font-size: 10px; fill: var(--tx); text-anchor: end; dominant-baseline: central; }
+.chart-heat__col-label { font-family: var(--font-mono); font-size: 10px; fill: var(--tx); text-anchor: middle; }
+
+/* tooltip (shared) */
+.chart-tip {
+  position: absolute; pointer-events: none;
+  background: var(--canvas-3); border: 1px solid var(--rule-strong);
+  padding: .4rem .6rem; border-radius: 3px;
+  font-family: var(--font-mono); font-size: .68rem; color: var(--tx);
+  white-space: nowrap; z-index: 10;
+  opacity: 0; transition: opacity .12s ease;
+  box-shadow: 0 4px 12px var(--shadow);
+}
+.chart-tip.show { opacity: 1; }
+
+@media (max-width: 900px) {
+  .charts__grid { grid-template-columns: 1fr; }
+}
+
 /* ── reduced motion ── */
 
 @media (prefers-reduced-motion: reduce) {
