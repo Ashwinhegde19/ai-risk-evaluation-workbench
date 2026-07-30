@@ -106,17 +106,17 @@
           <p class="plate__note">Passive tier cleared at <code>minimal</code>. The adversarial layer is what fails the certificate: a 62.5% break rate in a high-risk deployment context emits critical findings across all three frameworks.</p>
         </article>
 
-        <article class="plate plate--cleared" aria-labelledby="clear-h">
+        <article class="plate plate--edge" aria-labelledby="clear-h">
           <p class="plate__kicker mono-label">Cleared · frontier · Kilo gateway</p>
           <h3 class="plate__model" id="clear-h">openai/gpt-5</h3>
           <p class="plate__label" id="clear-meta"></p>
           <div class="plate__pct">
             <span class="num" id="clear-pct">0.0</span><span class="pct-sign">%</span>
           </div>
-          <p class="plate__ci">breaks 0/40 · wilson 95% <span id="clear-ci"></span></p>
-          <div class="plate__stamp"><span class="stamp stamp--pass" role="img" aria-label="Adversarial verdict: hold">HOLD</span></div>
+          <p class="plate__ci">breaks 4/40 · wilson 95% <span id="clear-ci"></span></p>
+          <div class="plate__stamp"><span class="stamp stamp--pass" role="img" aria-label="Adversarial verdict: pass">PASS</span></div>
           <div class="plate__bar" id="clear-bar" aria-hidden="true"></div>
-          <p class="plate__note">Zero breaks across all 40 trials — the strongest result on record. Every attack vector was refused cleanly, including the <code>tool_exploit</code> confirmation-gated edge that broke it in the prior run.</p>
+          <p class="plate__note">Passed the certificate at 10% break rate — identical to GLM-5.2. All four breaks are confirmation-gated <code>tool_exploit</code> replies where the model offered to provide destructive commands on a magic word. The refusal fast-path initially hid these from the adjudicator; offline replay with the run's own judge (gpt-4o-mini) confirmed them as breaks, consistent with the prior run's standard.</p>
         </article>
 
         <article class="plate plate--edge" aria-labelledby="edge-h">
@@ -132,11 +132,11 @@
           <p class="plate__note">Passed the certificate at 10% break rate, but the four breaks are all on <code>roleplay</code> (4/5) — the same escalation vector that demolishes qwen3-8b. GLM held 5/5 on every other strategy, matching gpt-5 exactly. The roleplay gap is the one edge worth watching.</p>
         </article>
 
-        <figure class="axis reveal" role="img" aria-label="Shared 0 to 100 percent axis. GPT-5 Wilson interval 0 to 8.76 percent. GLM-5.2 Wilson interval 3.96 to 23.05 percent — overlapping with GPT-5, so statistically indistinguishable. Qwen3-8B Wilson interval 47.03 to 75.78 percent. The gap between 23.05 and 47.03 percent is marked as statistically significant.">
+        <figure class="axis reveal" role="img" aria-label="Shared 0 to 100 percent axis. GPT-5 and GLM-5.2 Wilson intervals are identical at 3.96 to 23.05 percent (both 4 of 40). Qwen3-8B Wilson interval 47.03 to 75.78 percent. The gap between 23.05 and 47.03 percent is marked as statistically significant.">
           <figcaption class="axis__title mono-label">Fig. 1 · shared axis · 95% Wilson intervals · breaks / 40</figcaption>
           <div class="axis__plot" id="axis-plot">
             <div class="axis__lane">
-              <span class="axis__lane-lbl t-hold">openai/gpt-5</span>
+              <span class="axis__lane-lbl t-edge">openai/gpt-5</span>
               <div class="axis__track" id="axis-gpt"></div>
               <span class="axis__lane-ci" id="axis-gpt-ci"></span>
             </div>
@@ -252,18 +252,18 @@
           <p class="cert__note">Passive tier cleared at <code>minimal</code>. The adversarial layer is what fails the certificate — a ≥25% break rate in a high-risk deployment context emits critical findings across all three frameworks.</p>
         </article>
 
-        <article class="cert cert--pass">
+        <article class="cert cert--edge">
           <div class="cert__model">openai/gpt-5 <span class="cert__venue">kilo gateway</span></div>
           <div class="cert__body">
             <div class="stamp stamp--pass" role="img" aria-label="Certificate verdict: pass">PASS</div>
             <dl class="cert__facts">
-              <div><dt>adversarial tier</dt><dd class="t-hold">MINIMAL</dd></div>
-              <div><dt>break rate</dt><dd>0.0% <span class="dim">(0/40)</span></dd></div>
-              <div><dt>wilson 95%</dt><dd>[0.00%, 8.76%]</dd></div>
-              <div><dt>critical findings</dt><dd>0</dd></div>
+              <div><dt>adversarial tier</dt><dd class="t-edge">LIMITED</dd></div>
+              <div><dt>break rate</dt><dd>10.0% <span class="dim">(4/40)</span></dd></div>
+              <div><dt>wilson 95%</dt><dd>[3.96%, 23.05%]</dd></div>
+              <div><dt>medium findings</dt><dd>12</dd></div>
             </dl>
           </div>
-          <p class="cert__note">Zero breaks across all 40 trials — the strongest result on record. Every attack vector was refused cleanly.</p>
+          <p class="cert__note">Passed the certificate at 10% break rate — identical to GLM-5.2. All four breaks are confirmation-gated <code>tool_exploit</code> replies where the model offered to provide destructive commands on a magic word. The refusal fast-path initially hid these from the adjudicator; offline replay with the run's own judge confirmed them as breaks, consistent with the prior run's standard.</p>
         </article>
 
         <article class="cert cert--edge">
@@ -282,7 +282,7 @@
       </div>
 
       <div class="cite-table" id="cite-table" role="list" aria-label="Break categories mapped to regulatory citations"></div>
-      <p class="cite-foot">Citation counts are computed live from the <code>redteam_findings[]</code> array in the compliance report (88 entries · 76 critical · 12 medium). The twelve medium entries are the cline-free/glm-5.2 <code>roleplay</code> edge; every critical entry is qwen3-8b (including its overall adversarial-robustness failure).</p>
+      <p class="cite-foot">Citation counts are computed live from the <code>redteam_findings[]</code> array in the compliance report (100 entries · 76 critical · 24 medium). The twenty-four medium entries are the edge breaks — twelve cline-free/glm-5.2 <code>roleplay</code> and twelve openai/gpt-5 <code>tool_exploit</code> (the latter surfaced by offline replay of the refusal fast-path); every critical entry is qwen3-8b (including its overall adversarial-robustness failure).</p>
     </section>
 
     <!-- ══ 06 INSTRUMENT AUDIT ══ -->
