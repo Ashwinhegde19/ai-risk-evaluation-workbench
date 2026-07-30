@@ -92,7 +92,7 @@ This is routed through Kilo Gateway using an OpenAI-compatible client. The gatew
 ## Live Demo
 
 ```txt
-https://ashwinhegde19-ai-risk-evaluation-workbench.hf.space
+https://ashwinhegde19-ai-risk-evaluation-workbench.static.hf.space
 ```
 
 ## Key Commands
