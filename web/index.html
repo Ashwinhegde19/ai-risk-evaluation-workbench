@@ -37,6 +37,7 @@
         <a href="#tribunal" data-spy="tribunal">Tribunal</a>
         <a href="#audit" data-spy="audit">Instrument</a>
         <a href="#shieldstral" data-spy="shieldstral">Classifier</a>
+        <a href="#evolution" data-spy="evolution">Evolution</a>
         <a href="#methods" data-spy="methods">Methods</a>
       </nav>
 
@@ -380,6 +381,41 @@
           <p class="shieldstral__note">Shieldstral catches semantic violations (violence, phishing) that regex patterns miss, while providing calibrated confidence scores for threshold-tuning in different deployment contexts (high-risk vs low-risk).</p>
         </div>
       </div>
+    </section>
+
+    <!-- ══ 06c EVOLUTION — BREAK-RATE COMPARISON ACROSS RUNS ══ -->
+    <section class="evolution reveal" id="evolution" aria-labelledby="evolution-h">
+      <header class="sec-head">
+        <p class="sec-eyebrow mono-label">Run history · change analysis</p>
+        <h2 id="evolution-h">Evolution of break rates</h2>
+        <p class="sec-sub">Every red-team run produces a findings artifact. This section loads all of them and compares break rates, strategy breakdowns, and verdict changes across runs — so you can see why a model was breaking before and isn't now (or vice versa).</p>
+      </header>
+
+      <div class="evolution__controls">
+        <label class="mono-label" for="evolution-models">Compare models</label>
+        <div class="evolution__chips" id="evolution-chips"></div>
+      </div>
+
+      <div class="evolution__layout">
+        <figure class="evolution__chart">
+          <figcaption class="mono-label">Break rate per run (%)</figcaption>
+          <div id="evolution-chart" class="evolution__chart-body" aria-live="polite"></div>
+        </figure>
+
+        <div class="evolution__runs" id="evolution-runs"></div>
+      </div>
+
+      <div class="evolution__table-wrap">
+        <h3 class="mono-label">Latest vs previous run</h3>
+        <div class="table-scroll">
+          <table class="data-table" id="evolution-compare">
+            <thead id="evolution-compare-head"></thead>
+            <tbody id="evolution-compare-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <p class="evolution__note" id="evolution-note"></p>
     </section>
 
     <!-- ══ 07 METHODS ══ -->

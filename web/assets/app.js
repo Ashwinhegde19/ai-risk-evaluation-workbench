@@ -387,7 +387,7 @@
 
   /* ── data load: live JSON, fallback to inlined DATA ── */
 
-  var live = { rt: null, comp: null };
+  var live = { rt: null, comp: null, runs: [] };
 
   /* Try several layouts: served from web/ (results symlinked inside),
      served from the repo root (/web/index.html), or nested deeper. */
@@ -403,14 +403,75 @@
     }, Promise.resolve(null));
   }
 
+  /* Discover historical red-team runs. redteam_findings*.json artifacts are
+     fetched one at a time; failures are tolerated so a missing file simply
+     drops that run. Returns a promise of an array of { label, data } sorted
+     oldest -> newest: smoke first, then any 2-way/3-way runs, and the plain
+     redteam_findings.json (the current run) last so the chart reads left to
+     right in time and the final two entries are the true latest pair. */
+  function loadEvolutionRuns() {
+    var names = [
+      "redteam_findings_smoke.json",
+      "redteam_findings_2way.json",
+      "redteam_findings_3way.json",
+      "redteam_findings.json",
+    ];
+    var bases = ["results/", "../results/", "../../results/"];
+    var jobs = [];
+    names.forEach(function (name) {
+      bases.forEach(function (base) {
+        jobs.push({
+          url: base + name,
+          label: labelFromName(name),
+        });
+      });
+    });
+    return Promise.all(jobs.map(function (job) {
+      return fetch(job.url).then(function (r) {
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+      }).then(function (data) {
+        return { label: job.label, name: job.name, data: data };
+      }).catch(function () { return null; });
+    })).then(function (items) {
+      // Dedupe by (name, non-empty data), keep the first successfully fetched.
+      var seen = {};
+      var runs = [];
+      items.forEach(function (item) {
+        if (!item) return;
+        if (!item.data || !item.data.per_model) return;
+        if (seen[item.name]) return;
+        seen[item.name] = true;
+        runs.push(item);
+      });
+      return runs;
+    });
+  }
+
+  function labelFromName(name) {
+    var m = name.replace("redteam_findings", "")
+      .replace(".json", "")
+      .replace(/^_+/, "");
+    if (!m) return "latest";
+    if (m === "3way") return "3-way run";
+    if (m === "2way") return "2-way run";
+    if (m === "smoke") return "smoke test";
+    return m;
+  }
+
   function loadData() {
     var done = function () { render(); };
     if (location.protocol === "file:") { done(); return; }
     var rtUrls = ["results/redteam_findings.json", "../results/redteam_findings.json", "../../results/redteam_findings.json"];
     var compUrls = ["results/compliance_report_model.json", "../results/compliance_report_model.json", "../../results/compliance_report_model.json"];
-    Promise.all([fetchFirstOk(rtUrls), fetchFirstOk(compUrls)]).then(function (pair) {
-      if (pair[0]) live.rt = pair[0];
-      if (pair[1]) live.comp = pair[1];
+    Promise.all([
+      fetchFirstOk(rtUrls),
+      fetchFirstOk(compUrls),
+      loadEvolutionRuns(),
+    ]).then(function (chunk) {
+      if (chunk[0]) live.rt = chunk[0];
+      if (chunk[1]) live.comp = chunk[1];
+      live.runs = chunk[2] || [];
       done();
     }).catch(function () { done(); });
   }
@@ -1453,8 +1514,213 @@
 
   /* ── boot ── */
 
+  /* ── 06c evolution — break-rate comparison across runs ── */
+
+  function percent(rate) {
+    return (rate * 100).toFixed(1) + "%";
+  }
+
+  function rateFromRun(run, model) {
+    var perModel = (run.data && run.data.per_model) || {};
+    var stats = perModel[model];
+    return stats ? (stats.rate != null ? stats.rate : (stats.breaks / (stats.total || 1))) : null;
+  }
+
+  /* ── 06c evolution — break-rate comparison across runs ── */
+
+  function percent(rate) {
+    return (rate * 100).toFixed(1) + "%";
+  }
+
+  function rateFrom(run, model) {
+    var perModel = (run.data && run.data.per_model) || {};
+    var stats = perModel[model];
+    if (!stats) return null;
+    if (stats.rate != null) return stats.rate;
+    var total = stats.total || 1;
+    return stats.breaks / total;
+  }
+
+  function evolutionSvgFor(runs, models) {
+    var W = 560, H = 300;
+    var pad = { top: 24, right: 30, bottom: 52, left: 54 };
+    var plotW = W - pad.left - pad.right;
+    var plotH = H - pad.top - pad.bottom;
+    var step = runs.length > 1 ? plotW / (runs.length - 1) : 0;
+    var colors = ["#C8402A", "#7C9A8D", "#E8C24A", "#6E8A7E", "#A99E8C", "#D9B45C", "#7FB3A0", "#B56A5A"];
+
+    var s = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12">';
+
+    // Y gridlines 0..100 by 20.
+    var g, gy, i, cx, rate, cy;
+    for (g = 0; g <= 100; g += 20) {
+      gy = pad.top + plotH - (g / 100) * plotH;
+      s += '<line x1="' + pad.left + '" y1="' + gy + '" x2="' + (pad.left + plotW) + '" y2="' + gy + '" stroke="#2a2a2a" stroke-width="1"/>';
+      s += '<text x="' + (pad.left - 8) + '" y="' + (gy + 4) + '" text-anchor="end" fill="#8a8a8a">' + g + '</text>';
+    }
+    // X labels per run.
+    runs.forEach(function (r, i) {
+      cx = pad.left + (runs.length > 1 ? i * step : plotW / 2);
+      s += '<text x="' + cx + '" y="' + (pad.top + plotH + 18) + '" text-anchor="middle" fill="#cfcfcf">' + r.label + '</text>';
+    });
+    // One line per model.
+    models.forEach(function (m, mi) {
+      var pts = [], marks = [];
+      runs.forEach(function (r, i) {
+        var rt = rateFrom(r, m);
+        if (rt == null) return;
+        cx = pad.left + (runs.length > 1 ? i * step : plotW / 2);
+        cy = pad.top + plotH - rt * plotH;
+        pts.push(cx + "," + cy);
+        marks.push({ cx: cx, cy: cy, rate: rt });
+      });
+      if (!pts.length) return;
+      var color = colors[mi % colors.length];
+      s += '<polyline points="' + pts.join(" ") + '" fill="none" stroke="' + color + '" stroke-width="2.5"/>';
+      marks.forEach(function (pt) {
+        s += '<circle cx="' + pt.cx + '" cy="' + pt.cy + '" r="4" fill="' + color + '"/>';
+        s += '<text x="' + (pt.cx + 6) + '" y="' + (pt.cy - 4) + '" fill="' + color + '">' + percent(pt.rate) + '</text>';
+      });
+    });
+    s += "</svg>";
+    return s;
+  }
+
+  function renderEvolution() {
+    var wrap = document.getElementById("evolution-chart");
+    var chipsWrap = document.getElementById("evolution-chips");
+    var runsWrap = document.getElementById("evolution-runs");
+    var compareHead = document.getElementById("evolution-compare-head");
+    var compareBody = document.getElementById("evolution-compare-body");
+    var note = document.getElementById("evolution-note");
+    if (!wrap || !runsWrap) return;
+
+    var runs = live.runs;
+    if (!runs.length) {
+      wrap.innerHTML = '<p class="evo-empty">No historical run artifacts found. Run the red-team agent to generate comparison data.</p>';
+      runsWrap.innerHTML = "";
+      if (chipsWrap) chipsWrap.innerHTML = "";
+      if (compareHead) compareHead.innerHTML = "";
+      if (compareBody) compareBody.innerHTML = "";
+      if (note) note.textContent = "";
+      return;
+    }
+
+    // Every model seen across runs.
+    var modelSet = {};
+    runs.forEach(function (run) {
+      var pm = (run.data && run.data.per_model) || {};
+      Object.keys(pm).forEach(function (m) { modelSet[m] = true; });
+    });
+    var modelList = Object.keys(modelSet);
+    var selected = modelList.slice();
+
+    function renderChips() {
+      if (!chipsWrap) return;
+      chipsWrap.innerHTML = "";
+      modelList.forEach(function (m) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "evo-chip" + (selected.indexOf(m) >= 0 ? " is-on" : "");
+        btn.textContent = m;
+        btn.addEventListener("click", function () {
+          var i = selected.indexOf(m);
+          if (i >= 0) selected.splice(i, 1); else selected.push(m);
+          renderChips();
+          renderChart();
+        });
+        chipsWrap.appendChild(btn);
+      });
+    }
+
+    function renderChart() {
+      var shown = modelList.filter(function (m) { return selected.indexOf(m) >= 0; });
+      if (!shown.length) { wrap.innerHTML = '<p class="evo__empty">Select at least one model.</p>'; return; }
+      wrap.innerHTML = evolutionSvgFor(runs, shown);
+    }
+
+    function renderRunCards() {
+      runsWrap.innerHTML = "";
+      runs.forEach(function (run) {
+        var card = document.createElement("div");
+        card.className = "evo-run";
+        var head = document.createElement("h4");
+        head.className = "mono-label";
+        head.textContent = run.label;
+        card.appendChild(head);
+        var pm = (run.data && run.data.per_model) || {};
+        var list = Object.keys(pm);
+        if (!list.length) {
+          card.innerHTML += '<p class="evo-run-empty">No per-model data.</p>';
+          runsWrap.appendChild(card);
+          return;
+        }
+        var table = document.createElement("table");
+        table.className = "evo-table";
+        var body = list.map(function (m) {
+          var s = pm[m];
+          var rt = s.rate != null ? s.rate : s.breaks / (s.total || 1);
+          return '<tr><td class="mono-label">' + m + '</td>'
+            + '<td>' + (s.breaks != null ? s.breaks : "&ndash;") + '</td>'
+            + '<td>' + (s.total != null ? s.total : "&ndash;") + '</td>'
+            + '<td class="evo-rate">' + percent(rt) + '</td></tr>';
+        }).join("");
+        table.innerHTML = '<thead><tr><th>model</th><th>breaks</th><th>total</th><th>rate</th></tr></thead><tbody>' + body + '</tbody>';
+        card.appendChild(table);
+        runsWrap.appendChild(card);
+      });
+    }
+
+    function renderComparison() {
+      if (!compareHead || !compareBody) return;
+      if (runs.length < 2) {
+        compareHead.innerHTML = "";
+        compareBody.innerHTML = "";
+        if (note) note.textContent = "Need at least two runs to compare latest vs previous.";
+        return;
+      }
+      var latest = runs[runs.length - 1];
+      var previous = runs[runs.length - 2];
+      var set = {};
+      [latest, previous].forEach(function (run) {
+        Object.keys((run.data && run.data.per_model) || {}).forEach(function (m) { set[m] = true; });
+      });
+      var list = Object.keys(set);
+      compareHead.innerHTML = '<tr><th>model</th><th>' + previous.label + '</th><th>' + latest.label + '</th><th>delta</th><th>verdict</th></tr>';
+      compareBody.innerHTML = list.map(function (m) {
+        var p = rateFrom(previous, m);
+        var l = rateFrom(latest, m);
+        var pCell = p == null ? "N/A" : percent(p);
+        var lCell = l == null ? "N/A" : percent(l);
+        var delta, verdict, cls;
+        if (p != null && l != null) {
+          var d = l - p;
+          delta = (d >= 0 ? "+" : "") + (d * 100).toFixed(1) + "%";
+          if (d > 0.0001) { verdict = "worse"; cls = "evo-neg"; }
+          else if (d < -0.0001) { verdict = "better"; cls = "evo-pos"; }
+          else { verdict = "unchanged"; cls = ""; }
+        } else if (p == null && l != null) {
+          delta = "&mdash;"; verdict = "new in run"; cls = "evo-new";
+        } else {
+          delta = "&mdash;"; verdict = "no longer in run"; cls = "evo-gone";
+        }
+        return '<tr><td class="mono-label">' + m + '</td>'
+          + '<td>' + pCell + '</td><td>' + lCell + '</td>'
+          + '<td class="' + cls + '">' + delta + '</td>'
+          + '<td class="' + cls + '">' + verdict + '</td></tr>';
+      }).join("");
+      if (note) note.textContent = "Delta compares the two most recent runs (rightmost two on the chart).";
+    }
+
+    renderChips();
+    renderChart();
+    renderRunCards();
+    renderComparison();
+  }
+
   function render() {
     renderBanner();
+    renderEvolution();
     renderTicker();
     renderBoard();
     renderCharts();
