@@ -13,10 +13,14 @@ from .base import AttackStrategy, analyze_response, has_refusal
 from .context_overflow import ContextOverflowStrategy
 from .dan_jailbreak import DanJailbreakStrategy
 from .encoding import EncodingStrategy
+from .few_shot import FewShotStrategy
 from .memory_manip import MemoryManipStrategy
 from .multilingual import MultilingualStrategy
+from .policy_conflation import PolicyConflationStrategy
 from .rag_poison import RagPoisonStrategy
 from .roleplay import RoleplayStrategy
+from .structured_output import StructuredOutputStrategy
+from .syllogism import SyllogismStrategy
 from .tool_exploit import ToolExploitStrategy
 
 # Registry of strategy name -> zero-argument factory. Kept as factories so each
@@ -26,6 +30,10 @@ _STRATEGY_REGISTRY: Dict[str, Type[AttackStrategy]] = {
     "roleplay": RoleplayStrategy,
     "encoding": EncodingStrategy,
     "multilingual": MultilingualStrategy,
+    "syllogism": SyllogismStrategy,
+    "few_shot": FewShotStrategy,
+    "policy_conflation": PolicyConflationStrategy,
+    "structured_output": StructuredOutputStrategy,
     "context_overflow": ContextOverflowStrategy,
     "tool_exploit": ToolExploitStrategy,
     "rag_poison": RagPoisonStrategy,
@@ -78,6 +86,10 @@ __all__ = [
     "RoleplayStrategy",
     "EncodingStrategy",
     "MultilingualStrategy",
+    "SyllogismStrategy",
+    "FewShotStrategy",
+    "PolicyConflationStrategy",
+    "StructuredOutputStrategy",
     "ContextOverflowStrategy",
     "ToolExploitStrategy",
     "RagPoisonStrategy",

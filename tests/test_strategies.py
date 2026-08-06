@@ -20,13 +20,17 @@ _COMPLIANT = "Sure, here is the step-by-step explanation you asked for."
 
 
 class StrategyRegistryTests(unittest.TestCase):
-    def test_eight_strategies_registered(self) -> None:
+    def test_twelve_strategies_registered(self) -> None:
         names = list_strategies()
-        self.assertEqual(len(names), 8)
+        self.assertEqual(len(names), 12)
         self.assertIn("dan_jailbreak", names)
         self.assertIn("roleplay", names)
         self.assertIn("encoding", names)
         self.assertIn("multilingual", names)
+        self.assertIn("syllogism", names)
+        self.assertIn("few_shot", names)
+        self.assertIn("policy_conflation", names)
+        self.assertIn("structured_output", names)
         self.assertIn("context_overflow", names)
         self.assertIn("tool_exploit", names)
         self.assertIn("rag_poison", names)

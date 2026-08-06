@@ -81,6 +81,7 @@ class ResolveTargetsTests(unittest.TestCase):
                 "openai/gpt-5",
                 "anthropic/claude-opus-4.1",
                 "google/gemini-2.5-pro",
+                "deepseek/deepseek-v4-flash",
                 "qwen3-8b",
             ],
         )
