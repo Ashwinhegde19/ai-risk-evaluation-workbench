@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.backends.base import ClineBackend, get_backend
+from src.backends.base import ClineBackend, OpenAIBackend, get_backend
 
 
 # The exact wrapped envelope the Cline gateway returns (NOT the standard OpenAI
@@ -205,16 +205,22 @@ class ClineTokenResolutionTests(unittest.TestCase):
 class ClineRoutingTests(unittest.TestCase):
     """Routing precedence: cline slugs beat the generic namespaced->Kilo rule."""
 
-    def test_cline_slug_returns_cline_backend_with_verbatim_model(self):
-        with patch.dict(os.environ, {"MOCK": "0"}, clear=False):
-            backend = get_backend("cline-free/glm-5.2")
-        self.assertIsInstance(backend, ClineBackend)
-        self.assertEqual(backend.model_name, "cline-free/glm-5.2")
-
-    def test_cline_namespace_prefix_also_routes_to_cline(self):
+    def test_cline_namespace_prefix_routes_to_cline(self):
+        """cline/ prefix models still route to ClineBackend."""
         with patch.dict(os.environ, {"MOCK": "0"}, clear=False):
             backend = get_backend("cline/some-model")
         self.assertIsInstance(backend, ClineBackend)
+
+    def test_cline_free_glm_5_2_routes_to_kilo_not_cline(self):
+        """cline-free/glm-5.2 was moved to the Kilo gateway."""
+        with patch.dict(
+            os.environ,
+            {"KILO_BASE_URL": "https://kilo.example.com/v1", "KILO_API_KEY": "k"},
+            clear=False,
+        ):
+            backend = get_backend("cline-free/glm-5.2")
+        self.assertIsInstance(backend, OpenAIBackend)
+        self.assertEqual(backend.model_name, "cline-free/glm-5.2")
 
     def test_openai_slug_still_routes_to_kilo(self):
         """Regression guard: the precedence change must not steal Kilo slugs."""

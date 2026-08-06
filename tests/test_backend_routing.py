@@ -91,19 +91,25 @@ class BackendRoutingTest(unittest.TestCase):
         self.assertIsNotNone(backend)
         self.assertEqual(backend.model_name, "gpt-4o")
 
-    def test_cline_model_routes_to_cline_backend(self):
-        """cline-free/glm-5.2 should route to ClineBackend."""
-        with patch.dict(os.environ, {"MOCK": "0"}, clear=False):
+    def test_cline_free_glm_5_2_routes_to_kilo(self):
+        """cline-free/glm-5.2 now routes through the Kilo gateway (frontier lane)."""
+        with patch.dict(os.environ, {"MOCK": "0", "KILO_BASE_URL": "https://kilo.example.com/v1", "KILO_API_KEY": "test-key"}, clear=False):
             backend = get_backend("cline-free/glm-5.2")
-            self.assertIsInstance(backend, ClineBackend)
+            self.assertIsInstance(backend, OpenAIBackend)
             self.assertEqual(backend.model_name, "cline-free/glm-5.2")
 
-    def test_cline_model_mock_mode_returns_openai_backend(self):
-        """In mock mode, Cline slugs should return a mock OpenAIBackend."""
+    def test_cline_namespace_still_routes_to_cline(self):
+        """cline/ prefix models still route to ClineBackend."""
+        with patch.dict(os.environ, {"MOCK": "0"}, clear=False):
+            backend = get_backend("cline/some-model")
+            self.assertIsInstance(backend, ClineBackend)
+
+    def test_cline_namespace_mock_mode_returns_openai_backend(self):
+        """In mock mode, Cline slugs return a mock OpenAIBackend."""
         with patch.dict(os.environ, {"MOCK": "1"}, clear=True):
-            backend = get_backend("cline-free/glm-5.2")
+            backend = get_backend("cline/some-model")
             self.assertIsNotNone(backend)
-            self.assertEqual(backend.model_name, "cline-free/glm-5.2")
+            self.assertEqual(backend.model_name, "cline/some-model")
 
 
 if __name__ == "__main__":

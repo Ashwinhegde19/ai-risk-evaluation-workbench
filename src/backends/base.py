@@ -23,8 +23,10 @@ from src.core.config import AppConfig, load_config
 # ``OPEN_MODEL_BASE_URL`` rather than the Kilo gateway.
 OPEN_MODEL_PREFIX = "qwen3-8b"
 
-# Prefix identifying Cline-routed models (e.g. ``cline-free/glm-5.2``).
-CLINE_MODEL_PREFIXES = ("cline-free/", "cline/")
+# Prefix identifying Cline-routed models (e.g. ``cline/some-model``).
+# ``cline-free/glm-5.2`` was removed — it now routes through the
+# Kilo gateway like other frontier models (openai/gpt-5).
+CLINE_MODEL_PREFIXES = ("cline/",)
 
 # Prefix identifying self-deployed Mistral/Shieldstral models. Slugs starting
 # with this are routed to the Modal M4 endpoint via ``MISTRAL_MODEL_BASE_URL``.
@@ -722,7 +724,7 @@ class MistralShieldstralBackend(ModelBackend):
 
 
 class ClineBackend(ModelBackend):
-    """Backend for Cline-routed models (e.g. ``cline-free/glm-5.2``).
+    """Backend for Cline-routed models (e.g. ``cline/some-model``).
 
     The Cline API requires HTTP/2 and wraps the standard OpenAI chat-completion
     response inside ``{"data": {...}, "success": true}``.  This backend uses
@@ -737,6 +739,9 @@ class ClineBackend(ModelBackend):
 
     Retry: up to 3 attempts with exponential backoff on HTTP 429 / 5xx and on
     transient ``httpx.TransportError``.
+
+    Note: ``cline-free/glm-5.2`` was moved to the Kilo gateway (frontier lane)
+    and is no longer served by this backend.
     """
 
     DEFAULT_BASE_URL = "https://api.cline.bot/api/v1"
@@ -953,10 +958,10 @@ def _is_cline_model(model_name: str) -> bool:
     """Return whether a slug refers to a Cline-routed model.
 
     Args:
-        model_name: The model slug (e.g. ``cline-free/glm-5.2``).
+        model_name: The model slug (e.g. ``cline/some-model``).
 
     Returns:
-        ``True`` when the slug starts with ``cline-free/`` or ``cline/``.
+        ``True`` when the slug starts with the Cline prefix.
     """
     lowered = model_name.lower()
     return lowered.startswith(CLINE_MODEL_PREFIXES)
@@ -1045,10 +1050,10 @@ def _resolve_cline_model(model_name: str) -> ModelBackend:
     """Build a backend for a Cline-routed model.
 
     The slug is passed through VERBATIM as the ``model`` field (Cline expects
-    the exact string ``cline-free/glm-5.2``, not a stripped id).
+    the exact model name, not a stripped id).
 
     Args:
-        model_name: The Cline slug (e.g. ``cline-free/glm-5.2``).
+        model_name: The Cline slug (e.g. ``cline/some-model``).
 
     Returns:
         A :class:`ClineBackend` instance.
