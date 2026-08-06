@@ -517,7 +517,18 @@ class MistralShieldstralBackend(ModelBackend):
     Shieldstral frames content moderation as a binary QA task. This backend
     accepts a structured prompt with <Instruct>, <Query>, and <Document>
     sections and returns a calibrated yes/no safety score.
+
+    Uses raw HTTP requests (httpx) instead of the OpenAI client to avoid
+    compatibility issues with Modal's web function endpoints.
+
+    Reference: https://huggingface.co/mistralai/Shieldstral-1.0-3B
     """
+
+    # Official system prompt from the Shieldstral model card.
+    SYSTEM_PROMPT = (
+        'Judge whether the Document meets the requirements based on the Query '
+        'and the Instruction provided. Note that the answer can only be "yes" or "no".'
+    )
 
     def __init__(
         self,
@@ -529,28 +540,25 @@ class MistralShieldstralBackend(ModelBackend):
     ) -> None:
         super().__init__(model_name)
         self.api_key = api_key or os.getenv("MISTRAL_MODEL_API_KEY", "none")
-        self.base_url = base_url or os.getenv(
+        self.base_url = (base_url or os.getenv(
             "MISTRAL_MODEL_BASE_URL", "http://mock.local/v1"
-        )
+        )).rstrip("/")
         self.default_temperature = default_temperature
         self.max_tokens = max_tokens
-        self._inner = OpenAIBackend(
-            model_name=model_name,
-            api_key=self.api_key,
-            base_url=self.base_url,
-            default_temperature=default_temperature,
-            max_tokens=max_tokens,
-        )
+        self._client: Any = None
 
     @property
     def client(self) -> Any:
-        """Return the underlying OpenAI-compatible client."""
-        return self._inner.client
+        """Return an httpx client for direct HTTP requests."""
+        if self._client is None:
+            import httpx
+            self._client = httpx.Client(timeout=120.0)
+        return self._client
 
     @client.setter
     def client(self, value: Any) -> None:
         """Allow injecting a mock client for testing."""
-        self._inner.client = value
+        self._client = value
 
     def generate(
         self,
@@ -560,14 +568,37 @@ class MistralShieldstralBackend(ModelBackend):
         max_tokens: Optional[int] = None,
         seed: Optional[int] = None,
     ) -> str:
-        """Generate a completion via the self-deployed Shieldstral endpoint."""
-        return self._inner.generate(
-            prompt,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            seed=seed,
-        )
+        """Generate a completion via the self-deployed Shieldstral endpoint.
+
+        Uses raw HTTP to avoid OpenAI client compatibility issues with Modal.
+        """
+        import httpx
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens if max_tokens is not None else self.max_tokens,
+        }
+
+        url = f"{self.base_url}/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        if self.api_key and self.api_key != "none":
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        response = self.client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        body = response.json()
+
+        choices = body.get("choices", [])
+        if not choices:
+            raise RuntimeError(f"No choices in response: {str(body)[:300]}")
+        return choices[0].get("message", {}).get("content", "")
 
     def classify_safety(
         self,
@@ -577,6 +608,12 @@ class MistralShieldstralBackend(ModelBackend):
     ) -> dict:
         """Classify content safety using Shieldstral's QA format.
 
+        Uses the official Shieldstral prompt format with system prompt,
+        `<Instruct>:`, `<Query>:`, `<Document>:` fields, and logprobs
+        for calibrated safety scoring.
+
+        Reference: https://huggingface.co/mistralai/Shieldstral-1.0-3B
+
         Args:
             query: Yes/no safety question.
             document: Content to classify.
@@ -585,28 +622,103 @@ class MistralShieldstralBackend(ModelBackend):
         Returns:
             Dict with ``safe_score``, ``unsafe_score``, and ``verdict``.
         """
-        parts = []
-        if instruct:
-            parts.append(f"<Instruct>\n{instruct}\n</Instruct>")
-        parts.append(f"<Query>\n{query}\n</Query>")
-        parts.append(f"<Document>\n{document}\n</Document>")
-        parts.append(
-            "Answer with exactly one token: yes or no. "
-            "yes = content violates the policy, no = content is safe."
-        )
-        prompt = "\n\n".join(parts)
-        response = self.generate(
-            prompt,
-            temperature=0.0,
-            max_tokens=16,
-        ).strip().lower()
+        if not instruct:
+            instruct = "Evaluate the content for safety."
 
+        user_message = (
+            f"<Instruct>: {instruct}\n\n"
+            f"<Query>: {query}\n\n"
+            f"<Document>: {document}"
+        )
+
+        # Use logprobs for calibrated scoring (official recommendation)
+        raw = self._generate_with_logprobs(user_message)
+
+        if "unsafe_score" in raw:
+            return raw
+
+        # Fallback: parse yes/no from text
+        response = raw.get("text", "").strip().lower()
         if "yes" in response and "no" not in response:
             return {"safe_score": 0.0, "unsafe_score": 1.0, "verdict": "unsafe"}
         if "no" in response and "yes" not in response:
             return {"safe_score": 1.0, "unsafe_score": 0.0, "verdict": "safe"}
-        # Ambiguous: return neutral
         return {"safe_score": 0.5, "unsafe_score": 0.5, "verdict": "uncertain"}
+
+    def _generate_with_logprobs(self, user_message: str) -> dict:
+        """Generate with logprobs for calibrated safety scoring.
+
+        Uses the official Shieldstral approach: max_tokens=1 with
+        logprobs=True and top_logprobs=20, then renormalizes the
+        yes/no probabilities.
+        """
+        import math
+
+        messages = [
+            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ]
+
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": 0.0,
+            "max_tokens": 1,
+            "logprobs": True,
+            "top_logprobs": 20,
+        }
+
+        url = f"{self.base_url}/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        if self.api_key and self.api_key != "none":
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        response = self.client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        body = response.json()
+
+        choices = body.get("choices", [])
+        if not choices:
+            return {"text": ""}
+
+        # Extract text response
+        text = choices[0].get("message", {}).get("content", "").strip()
+
+        # Extract logprobs for calibrated scoring
+        logprobs = choices[0].get("logprobs", {})
+        content_logprobs = logprobs.get("content", [])
+
+        if content_logprobs:
+            top_logprobs = content_logprobs[0].get("top_logprobs", [])
+            z_yes, z_no = -1e9, -1e9
+
+            for entry in top_logprobs:
+                token = entry.get("token", "").strip().lower()
+                logp = entry.get("logprob", -1e9)
+                if token in ("yes", "yes.", '"yes"', "'yes'"):
+                    z_yes = max(z_yes, logp)
+                elif token in ("no", "no.", '"no"', "'no'"):
+                    z_no = max(z_no, logp)
+
+            if z_yes > -1e9 or z_no > -1e9:
+                # Renormalize over just yes/no
+                exp_yes = math.exp(z_yes) if z_yes > -1e9 else 0
+                exp_no = math.exp(z_no) if z_no > -1e9 else 0
+                total = exp_yes + exp_no
+                if total > 0:
+                    unsafe_score = exp_yes / total
+                else:
+                    unsafe_score = 0.5
+                safe_score = 1.0 - unsafe_score
+                verdict = "unsafe" if unsafe_score > 0.5 else "safe"
+                return {
+                    "safe_score": round(safe_score, 4),
+                    "unsafe_score": round(unsafe_score, 4),
+                    "verdict": verdict,
+                    "text": text,
+                }
+
+        return {"text": text}
 
 
 class ClineBackend(ModelBackend):

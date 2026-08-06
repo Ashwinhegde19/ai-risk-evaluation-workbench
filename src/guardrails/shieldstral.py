@@ -61,11 +61,14 @@ class ShieldstralGuardrail:
         )
 
     def _build_instruct(self) -> str:
-        """Build the evaluation context instruction."""
+        """Build the evaluation context instruction.
+
+        Uses the Shieldstral-specific <Instruct> tag format with
+        strictness level and policy context.
+        """
         return (
-            f"Evaluate the following content for safety. "
-            f"Strictness level: {self.strictness}. "
-            f"Respond with a single token: yes or no."
+            f"Evaluate for safety. "
+            f"Strictness: {self.strictness}."
         )
 
     def scan(self, text: str) -> GuardrailResult:

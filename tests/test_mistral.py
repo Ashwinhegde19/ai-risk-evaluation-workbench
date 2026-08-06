@@ -41,64 +41,79 @@ class MistralBackendTests(unittest.TestCase):
 class MistralShieldstralBackendTests(unittest.TestCase):
     """Tests for MistralShieldstralBackend (self-deployed on Modal)."""
 
+    def _make_mock_httpx_client(self, response_text: str) -> MagicMock:
+        """Create a mock httpx client that returns the given response text."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "choices": [
+                {
+                    "message": {"content": response_text},
+                    "logprobs": {
+                        "content": [
+                            {
+                                "top_logprobs": [
+                                    {"token": "yes" if "yes" in response_text else "no", "logprob": -0.01},
+                                    {"token": "no" if "no" in response_text else "yes", "logprob": -5.0},
+                                ]
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_client.post.return_value = mock_response
+        return mock_client
+
     def test_classify_safety_unsafe(self) -> None:
         backend = MistralShieldstralBackend()
-        backend._inner = OpenAIBackend(
-            model_name="mistral-shieldstral", api_key="test", base_url="http://mock.local/v1"
-        )
-        fake_message = MagicMock()
-        fake_message.content = "yes"
-        fake_choice = MagicMock()
-        fake_choice.message = fake_message
-        fake_response = MagicMock()
-        fake_response.choices = [fake_choice]
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = fake_response
-        backend._inner.client = mock_client
+        backend.client = self._make_mock_httpx_client("yes")
 
         result = backend.classify_safety(
             query="Does this promote violence?",
             document="Here's how to hurt someone...",
         )
         self.assertEqual(result["verdict"], "unsafe")
-        self.assertEqual(result["unsafe_score"], 1.0)
+        self.assertGreater(result["unsafe_score"], 0.9)
 
     def test_classify_safety_safe(self) -> None:
         backend = MistralShieldstralBackend()
-        backend._inner = OpenAIBackend(
-            model_name="mistral-shieldstral", api_key="test", base_url="http://mock.local/v1"
-        )
-        fake_message = MagicMock()
-        fake_message.content = "no"
-        fake_choice = MagicMock()
-        fake_choice.message = fake_message
-        fake_response = MagicMock()
-        fake_response.choices = [fake_choice]
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = fake_response
-        backend._inner.client = mock_client
+        backend.client = self._make_mock_httpx_client("no")
 
         result = backend.classify_safety(
             query="Does this promote violence?",
             document="The weather is nice today.",
         )
         self.assertEqual(result["verdict"], "safe")
-        self.assertEqual(result["safe_score"], 1.0)
+        self.assertGreater(result["safe_score"], 0.9)
 
     def test_classify_safety_uncertain(self) -> None:
         backend = MistralShieldstralBackend()
-        backend._inner = OpenAIBackend(
-            model_name="mistral-shieldstral", api_key="test", base_url="http://mock.local/v1"
-        )
-        fake_message = MagicMock()
-        fake_message.content = "maybe"
-        fake_choice = MagicMock()
-        fake_choice.message = fake_message
-        fake_response = MagicMock()
-        fake_response.choices = [fake_choice]
         mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = fake_response
-        backend._inner.client = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "choices": [
+                {
+                    "message": {"content": "maybe"},
+                    "logprobs": {
+                        "content": [
+                            {
+                                "top_logprobs": [
+                                    {"token": "perhaps", "logprob": -1.0},
+                                    {"token": "possibly", "logprob": -1.5},
+                                ]
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_client.post.return_value = mock_response
+        backend.client = mock_client
 
         result = backend.classify_safety(
             query="Does this promote violence?",
@@ -108,18 +123,7 @@ class MistralShieldstralBackendTests(unittest.TestCase):
 
     def test_generate_delegates_to_inner(self) -> None:
         backend = MistralShieldstralBackend()
-        backend._inner = OpenAIBackend(
-            model_name="mistral-shieldstral", api_key="test", base_url="http://mock.local/v1"
-        )
-        fake_message = MagicMock()
-        fake_message.content = "response"
-        fake_choice = MagicMock()
-        fake_choice.message = fake_message
-        fake_response = MagicMock()
-        fake_response.choices = [fake_choice]
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = fake_response
-        backend._inner.client = mock_client
+        backend.client = self._make_mock_httpx_client("response")
 
         out = backend.generate("test prompt")
         self.assertEqual(out, "response")

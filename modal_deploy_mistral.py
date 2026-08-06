@@ -27,7 +27,7 @@ import modal
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-MODEL_REPO = "mistralai/Shieldstral-3B"    # Hugging Face repo id
+MODEL_REPO = "mistralai/Shieldstral-1.0-3B"  # Hugging Face repo id
 SERVED_MODEL_NAME = "mistral-shieldstral"  # name clients pass as ``model=``
 VLLM_PORT = 8000
 MAX_MODEL_LEN = 4096
