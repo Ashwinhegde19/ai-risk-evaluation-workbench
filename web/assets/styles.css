@@ -964,6 +964,7 @@ section, footer.methods { padding: 3.6rem 0 1.2rem; }
 .swatch--gpt   { height: 10px; background: var(--cleared); }
 .swatch--glm   { height: 10px; background: var(--gold-text); }
 .swatch--qwen  { height: 10px; background: var(--flag); }
+.swatch--ds    { height: 10px; background: #6E8A7E; }
 
 .bf-rows { display: flex; flex-direction: column; gap: .6rem; }
 .bf-row {
