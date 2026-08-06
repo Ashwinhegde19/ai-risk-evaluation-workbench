@@ -312,7 +312,7 @@
       <header class="sec-head">
         <p class="sec-eyebrow mono-label">Findings of fact · the scorer on the stand</p>
         <h2 id="audit-h">The instrument was audited too</h2>
-        <p class="sec-sub">Four scoring bugs were caught and fixed during this build. Each one made the verdict lie in a different direction — before a number on this page was allowed to ship, the scorer itself had to pass examination.</p>
+        <p class="sec-sub">Four scoring bugs were caught and fixed during this build. Each one made the verdict lie in a different direction — before a number on this page was allowed to ship, the scorer itself had to pass examination. The safety classifier is Mistral Shieldstral-3B, deployed on Modal — a 3B policy-adaptive model that matches classifiers 7x its size.</p>
       </header>
       <ol class="audit__line" id="audit-line"></ol>
     </section>
@@ -342,7 +342,7 @@
           <h3 class="mono-label methods__src-h">Source artifacts</h3>
           <ul class="src-links">
             <li><a class="chip chip--cite" href="results/redteam_findings.json">results/redteam_findings.json</a> <span class="dim">80 findings · 561 KB</span></li>
-            <li><a class="chip chip--cite" href="results/compliance_report_model.json">results/compliance_report_model.json</a> <span class="dim">79 citations</span></li>
+            <li><a class="chip chip--cite" href="results/compliance_report_model.json">results/compliance_report_model.json</a> <span class="dim">100 entries · 4 frameworks (EU AI Act, NIST RMF, ISO 42001, OWASP LLM Top 10)</span></li>
           </ul>
         </div>
         <div class="methods__cmds">
@@ -356,10 +356,14 @@
 <pre class="cmd"><code>python3 -u -m src.reports.generate \
   --format all --framework all \
   --deployment-context high</code></pre>
-          <p class="methods__note">Frontier targets route through the Kilo gateway (<code>KILO_BASE_URL</code>); <code>qwen3-8b</code> self-deploys via vLLM on a Modal NVIDIA L4 (<code>OPEN_MODEL_BASE_URL</code>). This console is static — serve it with <code>cd web &amp;&amp; python3 -m http.server 8000</code>. The Streamlit quick-look at <code>src/dashboard/app.py</code> remains intact.</p>
+<pre class="cmd"><code>modal deploy modal_deploy_mistral.py
+# Deploys Shieldstral-3B safety classifier as OpenAI-compatible endpoint</code></pre>
+<pre class="cmd"><code>python3 -m src.comparison.compare_mistral --mode guardrails
+# Compares regex guardrails vs Shieldstral: 80% vs 100% accuracy</code></pre>
+          <p class="methods__note">Frontier targets route through the Kilo gateway (<code>KILO_BASE_URL</code>); <code>qwen3-8b</code> self-deploys via vLLM on a Modal NVIDIA L4 (<code>OPEN_MODEL_BASE_URL</code>). Shieldstral-3B is the policy-adaptive safety classifier, also self-deployed on Modal (<code>MISTRAL_MODEL_BASE_URL</code>). This console is static — serve it with <code>cd web &amp;&amp; python3 -m http.server 8000</code>.</p>
         </div>
       </div>
-      <p class="colophon">VERDICT · evidence console · seed 42 · adjudicated by gpt-4o-mini · no framework, no build step</p>
+      <p class="colophon">VERDICT · evidence console · seed 42 · adjudicated by gpt-4o-mini · safety classification by Shieldstral-3B · OWASP LLM Top 10 + EU AI Act + NIST RMF + ISO 42001</p>
     </footer>
   </main>
 
