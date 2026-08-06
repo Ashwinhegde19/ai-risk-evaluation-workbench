@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional
 
+from src.compliance.owasp_llm import map_owasp_findings
 from src.core.models import (
     ComplianceFinding,
     ComplianceFramework,
@@ -342,6 +343,16 @@ def map_redteam_findings(
                 description=f"{harm.harm_type}: {harm.iso_description}",
                 evidence=evidence,
                 severity=severity,
+            )
+        )
+        # OWASP LLM Top 10 findings for this break.
+        compliance_findings.extend(
+            map_owasp_findings(
+                strategy=strategy,
+                target_model=target,
+                evidence=evidence,
+                risk_tier=risk_tier,
+                break_rate=rate,
             )
         )
     return compliance_findings

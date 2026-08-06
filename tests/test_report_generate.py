@@ -262,8 +262,8 @@ class CombinedReportWiringTests(unittest.TestCase):
             # tier is low.
             self.assertEqual(row["certificate"], "fail")
 
-            # The PDF carries both clearly separated sections. (The PDF writer
-            # escapes parentheses, hence the backslashes in the second marker.)
+            # The PDF carries both clearly separated sections.
+            # Reportlab escapes parentheses in PDF text strings.
             pdf_bytes = (out_dir / "compliance_report_combined.pdf").read_bytes()
             self.assertIn(b"Passive Compliance", pdf_bytes)
             self.assertIn(b"Red-Team \\(Adversarial\\) Findings", pdf_bytes)

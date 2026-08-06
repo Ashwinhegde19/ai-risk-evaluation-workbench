@@ -1,7 +1,7 @@
 """Compliance report generation.
 
-Aggregates evaluation results across the three regulatory frameworks
-(EU AI Act, NIST AI RMF, ISO/IEC 42001) into an audit-ready
+Aggregates evaluation results across the four regulatory frameworks
+(EU AI Act, NIST AI RMF, ISO/IEC 42001, OWASP LLM Top 10) into an audit-ready
 :class:`~src.core.models.ComplianceReport`, and serializes it to JSON and PDF.
 
 The public entry points are:
@@ -85,10 +85,12 @@ class ComplianceReportGenerator:
         self._redteam_compliance: List[ComplianceFinding] | None = None
 
     def build_findings(self) -> List[ComplianceFinding]:
-        """Compute findings across all three frameworks (cached).
+        """Compute passive-eval findings across the three canonical frameworks.
 
         Returns:
             The combined list of findings (EU AI Act + NIST AI RMF + ISO 42001).
+            OWASP LLM Top 10 findings are derived from red-team breaks in
+            :meth:`build_redteam_findings`.
         """
         if self._findings is None:
             self._findings = (
@@ -408,17 +410,44 @@ def write_json_report(
 
 
 def write_pdf_report(
-    report: ComplianceReport, path: str | Path
+    report: ComplianceReport,
+    path: str | Path,
+    per_model_stats: Optional[dict] = None,
+    per_strategy_stats: Optional[dict] = None,
+    raw_findings: Optional[List[dict]] = None,
 ) -> Path:
-    """Write a report to a PDF file using the dependency-free writer.
+    """Write a report to a PDF file.
+
+    Prefers the reportlab-based writer (richer layout with tables & transcripts).
+    Falls back to the dependency-free writer when reportlab is unavailable.
 
     Args:
         report: The report to render.
         path: Destination ``.pdf`` path.
+        per_model_stats: Optional ``{model: {breaks, total, rate, wilson_low,
+            wilson_high}}`` for the results table.
+        per_strategy_stats: Optional ``{strategy: {breaks, total, rate,
+            wilson_low, wilson_high}}`` for the results table.
+        raw_findings: Optional list of raw finding dicts (with ``transcript``
+            keys) for the representative breaking transcripts section.
 
     Returns:
         The path the PDF was written to.
     """
+    try:
+        from src.reports._pdf_reportlab import write_pdf_reportlab
+    except ImportError:
+        write_pdf_reportlab = None
+
+    if write_pdf_reportlab is not None:
+        return write_pdf_reportlab(
+            report, path,
+            per_model_stats=per_model_stats,
+            per_strategy_stats=per_strategy_stats,
+            raw_findings=raw_findings,
+        )
+
+    # Fallback: dependency-free minimal writer.
     return ComplianceReportGenerator(
         model_name=report.model_name,
         eval_results=[],

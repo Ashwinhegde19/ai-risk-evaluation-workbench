@@ -61,6 +61,7 @@ class ComplianceFramework(str, Enum):
     EU_AI_ACT = "eu_ai_act"
     NIST_RMF = "nist_rmf"
     ISO_42001 = "iso_42001"
+    OWASP_LLM_TOP_10 = "owasp_llm_top10"
 
 
 class BaseWorkbenchModel(BaseModel):
