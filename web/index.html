@@ -129,14 +129,14 @@
           <div class="plate__pct">
             <span class="num" id="edge-pct">0.0</span><span class="pct-sign">%</span>
           </div>
-          <p class="plate__ci">breaks 0/40 · wilson 95% <span id="edge-ci"></span></p>
-          <div class="plate__stamp"><span class="stamp stamp--pass" role="img" aria-label="Adversarial verdict: pass">PASS</span></div>
+          <p class="plate__ci">breaks 20/25 · wilson 95% <span id="edge-ci"></span></p>
+          <div class="plate__stamp"><span class="stamp stamp--fail" role="img" aria-label="Adversarial verdict: break">BREAK</span></div>
           <div class="plate__bar" id="edge-bar" aria-hidden="true"></div>
-          <p class="plate__note">Passed the certificate at 10% break rate, but the four breaks are all on <code>roleplay</code> (4/5) — the same escalation vector that demolishes qwen3-8b. GLM held 5/5 on every other strategy, matching gpt-5 exactly. The roleplay gap is the one edge worth watching.</p>
+          <p class="plate__note">Failed at 80% break rate under the modern 5-strategy run (<code>crescendo</code> 5/5, <code>many_shot</code> 5/5, <code>policy_conflation</code> 5/5, <code>structured_output</code> 5/5). The legacy 8-strategy baseline scored 0% — the attack taxonomy is what trips it, not the model tier.</p>
         </article>
 
-        <figure class="axis reveal" role="img" aria-label="Shared 0 to 100 percent axis. GPT-5 and GLM-5.2 Wilson intervals are identical at 3.96 to 23.05 percent (both 4 of 40). Qwen3-8B Wilson interval 47.03 to 75.78 percent. The gap between 23.05 and 47.03 percent is marked as statistically significant.">
-          <figcaption class="axis__title mono-label">Fig. 1 · shared axis · 95% Wilson intervals · breaks / 40</figcaption>
+        <figure class="axis reveal" role="img" aria-label="Shared 0 to 100 percent axis. GPT-9.3% break rate (7/75, Wilson 4.6–18.0%), deepseek-v4-flash 0% (0/40, Wilson 0.0–8.8%), qwen3-8b 66.7% (50/75, Wilson 55.4–76.3%). The gap between the holder cluster and qwen3-8b is marked as statistically significant.">
+          <figcaption class="axis__title mono-label">Fig. 1 · shared axis · 95% Wilson intervals · modern 15-strategy run</figcaption>
           <div class="axis__plot" id="axis-plot">
             <div class="axis__lane">
               <span class="axis__lane-lbl t-edge">openai/gpt-5</span>
@@ -144,7 +144,7 @@
               <span class="axis__lane-ci" id="axis-gpt-ci"></span>
             </div>
             <div class="axis__lane">
-              <span class="axis__lane-lbl t-edge">cline-free/glm-5.2</span>
+              <span class="axis__lane-lbl t-edge">deepseek/deepseek-v4-flash</span>
               <div class="axis__track" id="axis-glm"></div>
               <span class="axis__lane-ci" id="axis-glm-ci"></span>
             </div>
@@ -174,12 +174,12 @@
       </header>
 
       <div class="charts__grid">
-        <figure class="chart chart--bar" role="img" aria-label="Bar chart of per-model adversarial break rate with 95% Wilson confidence interval error bars. GPT-5 at 9.3%, qwen3-8b at 66.7%, deepseek-v4-flash at 0%.">
+        <figure class="chart chart--bar" role="img" aria-label="Bar chart of per-model adversarial break rate with 95% Wilson confidence interval error bars. GPT-5 at 9.3%, qwen3-8b at 66.7%.">
           <figcaption class="chart__title mono-label">Fig. 2 · adversarial break rate per model · 95% Wilson CI</figcaption>
           <div class="chart__svg-wrap" id="chart-bar-wrap"></div>
         </figure>
 
-        <figure class="chart chart--heat" role="img" aria-label="Heatmap of break rate per strategy per model. Rows are the fifteen attack strategies; columns are the three models. Darker cells indicate higher break rates.">
+        <figure class="chart chart--heat" role="img" aria-label="Heatmap of break rate per strategy per model. Rows are the fifteen attack strategies; columns are the two models (gpt-5, qwen3-8b). Darker cells indicate higher break rates.">
           <figcaption class="chart__title mono-label">Fig. 3 · strategy × model break-rate heatmap</figcaption>
           <div class="chart__svg-wrap" id="chart-heat-wrap"></div>
         </figure>
@@ -290,18 +290,18 @@
           <p class="cert__note">Passed the certificate at 9.3% break rate. Five breaks are <code>structured_output</code> (5/5 — JSON/data-export framing slips past prose filters); one each on <code>syllogism</code> and <code>tool_exploit</code>. Every other strategy held 5/5.</p>
         </article>
 
-        <article class="cert cert--edge">
+        <article class="cert cert--fail">
           <div class="cert__model">deepseek/deepseek-v4-flash <span class="cert__venue">kilo gateway</span></div>
           <div class="cert__body">
-            <div class="stamp stamp--pass" role="img" aria-label="Certificate verdict: pass">PASS</div>
+            <div class="stamp stamp--fail" role="img" aria-label="Certificate verdict: fail">FAIL</div>
             <dl class="cert__facts">
-              <div><dt>adversarial tier</dt><dd class="t-edge">LIMITED</dd></div>
-              <div><dt>break rate</dt><dd>0.0% <span class="dim">(0/40)</span></dd></div>
-              <div><dt>wilson 95%</dt><dd>[0.0%, 8.8%]</dd></div>
-              <div><dt>medium findings</dt><dd>12</dd></div>
+              <div><dt>adversarial tier</dt><dd class="t-breach">HIGH</dd></div>
+              <div><dt>break rate</dt><dd>80.0% <span class="dim">(20/25)</span></dd></div>
+              <div><dt>wilson 95%</dt><dd>[60.9%, 91.1%]</dd></div>
+              <div><dt>critical findings</dt><dd>12</dd></div>
             </dl>
           </div>
-          <p class="cert__note">Passed at 0% under the legacy 8 strategies. The modern 5-strategy run scored deepseek-v4-flash at 80% — see the Evolution section. This certificate reflects the legacy baseline only.</p>
+          <p class="cert__note">Failed the certificate at 80% break rate under the modern 5-strategy run (crescendo 5/5, many_shot 5/5, policy_conflation 5/5, structured_output 5/5, best_of_n 0/5). The legacy 8-strategy baseline scored 0% — the attack taxonomy is what trips it, not the model tier.</p>
         </article>
       </div>
 

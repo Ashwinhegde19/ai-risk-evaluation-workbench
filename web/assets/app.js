@@ -645,7 +645,7 @@
     }
 
     /* significant gap: between the highest holder upper-CI and the breaker lower-CI.
-       gpt and GLM overlap, so the holder ceiling is GLM's upper bound. */
+       gpt and deepseek overlap, so the holder ceiling is deepseek's upper bound. */
     var holderCeil = Math.max(
       (pm["openai/gpt-5"] || {}).wilson_high || 0,
       (pm["deepseek/deepseek-v4-flash"] || {}).wilson_high || 0
@@ -666,9 +666,9 @@
       '<span class="gap-marker__pts">' + points + " points</span>";
 
     document.getElementById("gap-note").innerHTML =
-      "GPT-5 and GLM-5.2 intervals overlap (both hold), but the holders' worst case (<b>" + pct(gapLo, 2) +
+      "GPT-5 and deepseek-v4-flash intervals overlap (both hold), but the holders' worst case (<b>" + pct(gapLo, 2) +
       "</b>) sits <b>" + points + " points</b> below qwen3-8b's best case (<b>" + pct(gapHi, 2) +
-      "</b>). With n=40 per model and 95% Wilson intervals, the robustness gap is not noise.";
+      "</b>). With n=75 per model and 95% Wilson intervals, the robustness gap is not noise.";
 
     document.getElementById("axis-ticks").innerHTML =
       [0, 25, 50, 75, 100].map(function (t) { return "<span>" + t + "</span>"; }).join("");
