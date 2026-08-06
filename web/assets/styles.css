@@ -1869,3 +1869,109 @@ section, footer.methods { padding: 3.6rem 0 1.2rem; }
   .ticker__track { animation: none !important; }
   .exhibit__folder { transform: none; }
 }
+
+/* ── Shieldstral measurements section ── */
+
+.shieldstral {
+  padding: 4rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.shieldstral__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  margin-top: 2rem;
+}
+
+.shieldstral__scores,
+.shieldstral__comparison {
+  background: var(--canvas-2);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 1.5rem;
+}
+
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0.75rem 0;
+}
+
+.score-label {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--tx-dim);
+}
+
+.score-bar {
+  width: 120px;
+  height: 8px;
+  background: var(--rule-dark);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.score-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.score-fill--high {
+  background: var(--flag);
+}
+
+.score-fill--low {
+  background: var(--cleared);
+}
+
+.score-val {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-width: 60px;
+  text-align: right;
+}
+
+.comp-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.comp-table th,
+.comp-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.comp-table th {
+  color: var(--tx-dim);
+  font-weight: 500;
+}
+
+.comp-table--winner {
+  background: rgba(124, 154, 141, 0.1);
+}
+
+.shieldstral__note {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--tx-dim);
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .shieldstral__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
