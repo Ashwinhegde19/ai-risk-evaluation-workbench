@@ -175,6 +175,104 @@ STRATEGY_HARM_MAP: Dict[str, HarmMapping] = {
         iso_control="A.8.3",
         iso_description="Context-integrity controls failed under memory manipulation.",
     ),
+    "few_shot": HarmMapping(
+        harm_type="in-context learning / instruction following",
+        eu_article="Art. 6 / Annex III",
+        eu_title="High-risk: in-context-learning safety bypass",
+        eu_description=(
+            "A few-shot priming attack established a benign compliance pattern "
+            "then extended it to disallowed content, bypassing safety controls "
+            "via in-context learning -- an Art. 6 robustness failure."
+        ),
+        nist_control="MEASURE-2.5",
+        nist_description="Measure robustness to in-context-learning exploits.",
+        iso_control="A.8.5",
+        iso_description="Robustness controls failed under few-shot priming.",
+    ),
+    "syllogism": HarmMapping(
+        harm_type="logical framing / reasoning coercion",
+        eu_article="Art. 6 / Annex III",
+        eu_title="High-risk: logical-framing safety bypass",
+        eu_description=(
+            "A syllogism attack reached disallowed content through a chain of "
+            "individually innocent premises the model accepted -- an Art. 6 "
+            "reasoning-coercion failure."
+        ),
+        nist_control="MEASURE-2.5",
+        nist_description="Measure robustness to logical-framing coercion.",
+        iso_control="A.8.5",
+        iso_description="Robustness controls failed under logical-framing attack.",
+    ),
+    "policy_conflation": HarmMapping(
+        harm_type="authority conflation / role confusion",
+        eu_article="Art. 6 / Annex III",
+        eu_title="High-risk: authority-conflation safety bypass",
+        eu_description=(
+            "A policy-conflation attack framed the disallowed request as an "
+            "authorized internal security exercise, exploiting the model's drive "
+            "to help a perceived legitimate authority -- an Art. 6 persona-bypass failure."
+        ),
+        nist_control="MANAGE-2.4",
+        nist_description="Manage role-confusion and authority-conflation risk.",
+        iso_control="A.8.4",
+        iso_description="Content-safety controls failed under authority-conflation attack.",
+    ),
+    "structured_output": HarmMapping(
+        harm_type="structured-output / format circumvention",
+        eu_article="Art. 6 / Annex III",
+        eu_title="High-risk: structured-output circumvention",
+        eu_description=(
+            "A structured-output attack hid disallowed content inside a JSON/"
+            "data-export request, bypassing prose safety filtering -- an Art. 6 "
+            "format-circumvention failure."
+        ),
+        nist_control="MEASURE-2.5",
+        nist_description="Measure robustness to format-circumvention attacks.",
+        iso_control="A.8.5",
+        iso_description="Robustness controls failed under structured-output circumvention.",
+    ),
+    "crescendo": HarmMapping(
+        harm_type="multi-turn gradual escalation",
+        eu_article="Art. 6 / Annex III",
+        eu_title="High-risk: multi-turn crescendo escalation",
+        eu_description=(
+            "A crescendo attack started from a benign premise and escalated "
+            "gradually over multiple turns until the model produced disallowed "
+            "content -- an Art. 6 multi-turn-robustness failure (USENIX Security 2025)."
+        ),
+        nist_control="MANAGE-2.4",
+        nist_description="Manage multi-turn escalation and conversation drift.",
+        iso_control="A.8.4",
+        iso_description="Content-safety controls failed under multi-turn crescendo escalation.",
+    ),
+    "many_shot": HarmMapping(
+        harm_type="long-context imitation / fabricated history",
+        eu_article="Art. 6 / Annex III",
+        eu_title="High-risk: many-shot in-context jailbreak",
+        eu_description=(
+            "A many-shot attack prefabricated a long compliant dialogue history "
+            "so the model imitated the pattern on the final disallowed request -- "
+            "an Art. 6 long-context in-context-learning failure."
+        ),
+        nist_control="MEASURE-2.5",
+        nist_description="Measure robustness to many-shot in-context jailbreak.",
+        iso_control="A.8.5",
+        iso_description="Robustness controls failed under many-shot fabricated-history attack.",
+    ),
+    "best_of_n": HarmMapping(
+        harm_type="prompt augmentation sampling",
+        eu_article="Art. 6 / Annex III",
+        eu_title="High-risk: best-of-N augmentation jailbreak",
+        eu_description=(
+            "A best-of-N attack sampled randomized prompt augmentations (case, "
+            "punctuation, whitespace, token shuffle) until one slipped past "
+            "refusal -- an Art. 6 adversarial-sampling failure (NeurIPS 2024)."
+        ),
+        nist_control="MEASURE-2.5",
+        nist_description="Measure robustness to augmentation-sampling attacks.",
+        iso_control="A.8.5",
+        iso_description="Robustness controls failed under best-of-N augmentation attack.",
+    ),
 }
 
 # Fallback for strategies not present in the mapping above.

@@ -36,6 +36,35 @@ def _eval_result(dimension: str, score: float, severity: Severity = Severity.INF
 
 
 class RedteamMappingTests(unittest.TestCase):
+    def test_all_registered_strategies_have_harm_mapping(self):
+        """Every strategy in the registry must be classifiable without falling
+        through to the generic default in a way that the report generator would
+        error on. The mapping must yield EU + NIST + ISO findings for each."""
+        from src.redteam.strategies import list_strategies
+
+        for name in list_strategies():
+            findings = map_redteam_findings(
+                [
+                    {
+                        "target": "m",
+                        "strategy": name,
+                        "broke": True,
+                        "turn": 1,
+                        "final_score": 1.0,
+                        "breaking_response": "x",
+                    }
+                ],
+                DeploymentContext.HIGH_RISK,
+            )
+            self.assertGreaterEqual(
+                len(findings), 3,
+                f"strategy '{name}' should yield EU+NIST+ISO findings, got {len(findings)}",
+            )
+            frameworks = {f.framework for f in findings}
+            self.assertIn(ComplianceFramework.EU_AI_ACT, frameworks)
+            self.assertIn(ComplianceFramework.NIST_RMF, frameworks)
+            self.assertIn(ComplianceFramework.ISO_42001, frameworks)
+
     def test_break_evidence_quotes_breaking_model_response(self):
         response = "Sure, here is the model's actual response."
         findings = map_redteam_findings(
@@ -107,6 +136,63 @@ class RedteamMappingTests(unittest.TestCase):
             DeploymentContext.HIGH_RISK,
         )
         self.assertEqual(findings, [])
+
+    # -------------------------------------------------------------------------
+    # New modern-attack strategies: each must map to the right control
+    # -------------------------------------------------------------------------
+
+    def _eu_iso_nist(self, strategy):
+        findings = map_redteam_findings(
+            [{"target": "m", "strategy": strategy, "broke": True, "turn": 1, "final_score": 1.0}],
+            DeploymentContext.HIGH_RISK,
+        )
+        by_fw = {f.framework: f for f in findings}
+        return by_fw.get(ComplianceFramework.EU_AI_ACT), \
+            by_fw.get(ComplianceFramework.NIST_RMF), \
+            by_fw.get(ComplianceFramework.ISO_42001)
+
+    def test_crescendo_maps_to_manage_control(self):
+        eu, nist, iso = self._eu_iso_nist("crescendo")
+        self.assertIsNotNone(eu)
+        self.assertIn("MANAGE-2.4", nist.control_id)
+        self.assertIn("A.8.4", iso.control_id)
+        self.assertIn("crescendo", eu.description.lower())
+
+    def test_many_shot_maps_to_measure_control(self):
+        eu, nist, iso = self._eu_iso_nist("many_shot")
+        self.assertIsNotNone(eu)
+        self.assertIn("MEASURE-2.5", nist.control_id)
+        self.assertIn("A.8.5", iso.control_id)
+
+    def test_best_of_n_maps_to_measure_control(self):
+        eu, nist, iso = self._eu_iso_nist("best_of_n")
+        self.assertIsNotNone(eu)
+        self.assertIn("MEASURE-2.5", nist.control_id)
+        self.assertIn("A.8.5", iso.control_id)
+
+    def test_policy_conflation_maps_to_manage_control(self):
+        eu, nist, iso = self._eu_iso_nist("policy_conflation")
+        self.assertIsNotNone(eu)
+        self.assertIn("MANAGE-2.4", nist.control_id)
+        self.assertIn("A.8.4", iso.control_id)
+
+    def test_structured_output_maps_to_measure_control(self):
+        eu, nist, iso = self._eu_iso_nist("structured_output")
+        self.assertIsNotNone(eu)
+        self.assertIn("MEASURE-2.5", nist.control_id)
+        self.assertIn("A.8.5", iso.control_id)
+
+    def test_few_shot_maps_to_measure_control(self):
+        eu, nist, iso = self._eu_iso_nist("few_shot")
+        self.assertIsNotNone(eu)
+        self.assertIn("MEASURE-2.5", nist.control_id)
+        self.assertIn("A.8.5", iso.control_id)
+
+    def test_syllogism_maps_to_measure_control(self):
+        eu, nist, iso = self._eu_iso_nist("syllogism")
+        self.assertIsNotNone(eu)
+        self.assertIn("MEASURE-2.5", nist.control_id)
+        self.assertIn("A.8.5", iso.control_id)
 
 
 class AdversarialRiskTierTests(unittest.TestCase):

@@ -127,7 +127,7 @@ flowchart LR
         end
     end
 
-    subgraph RedTeam["Red-Team Agent"]
+    subgraph RedTeam["Red-Team Agent (15 strategies)"]
         S1[dan_jailbreak]
         S2[roleplay]
         S3[encoding]
@@ -136,6 +136,9 @@ flowchart LR
         S6[tool_exploit]
         S7[rag_poison]
         S8[memory_manip]
+        S9[few_shot / syllogism]
+        S10[policy_conflation / structured_output]
+        S11[crescendo / many_shot / best_of_n]
     end
 
     subgraph Judge["Judge Ensemble"]
@@ -176,18 +179,25 @@ flowchart LR
 
 ### Multi-turn adaptive red-teaming
 
-Eight attack strategies that escalate and chain across turns:
+Fifteen attack strategies that escalate, sample, and chain across turns. The first eight are legacy single-shot attacks; the seven modern strategies below are drawn from 2024–2026 published research and target the instruction-following, multi-turn, and long-context pathways that frontier models still expose.
 
-| Strategy | Technique |
-|---|---|
-| `dan_jailbreak` | DAN / jailbreak persona chains |
-| `roleplay` | Role-play escalation (grandma, fictional scenario) |
-| `encoding` | Base64, ROT13, leetspeak, unicode obfuscation |
-| `multilingual` | Language switching to bypass filters |
-| `context_overflow` | Context-window flooding then injection |
-| `tool_exploit` | Trick model into calling dangerous tools |
-| `rag_poison` | Malicious document injection into knowledge base |
-| `memory_manip` | Exploit conversation memory across turns |
+| Strategy | Technique | Provenance |
+|---|---|---|
+| `dan_jailbreak` | DAN / jailbreak persona chains | legacy |
+| `roleplay` | Role-play escalation (grandma, fictional scenario) | legacy |
+| `encoding` | Base64, ROT13, leetspeak, unicode obfuscation | legacy |
+| `multilingual` | Language switching to bypass filters | legacy |
+| `context_overflow` | Context-window flooding then injection | legacy |
+| `tool_exploit` | Trick model into calling dangerous tools | legacy |
+| `rag_poison` | Malicious document injection into knowledge base | legacy |
+| `memory_manip` | Exploit conversation memory across turns | legacy |
+| `few_shot` | In-context-learning priming: benign compliance pattern extended to harm | derived |
+| `syllogism` | Logical-framing: reach harm through accepted innocent premises | derived |
+| `policy_conflation` | Authority/auditor framing exploiting help-reflex | derived |
+| `structured_output` | JSON/data-export framing to bypass prose safety filters | derived |
+| `crescendo` | Multi-turn gradual escalation from a benign premise to harm | Crescendo, USENIX Security 2025 |
+| `many_shot` | Long-context fabricated-history imitation (MSJ) | Many-shot Jailbreaking, Anthropic, NeurIPS 2024; PANDAS 2025 |
+| `best_of_n` | Randomized prompt-augmentation sampling (case/punct/whitespace/token shuffle) | Best-of-N Jailbreaking, Hughes et al., NeurIPS 2024 |
 
 ```python
 from src.redteam.agent import RedTeamAgent
