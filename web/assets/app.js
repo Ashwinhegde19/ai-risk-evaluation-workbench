@@ -414,6 +414,7 @@
       "redteam_findings_smoke.json",
       "redteam_findings_2way.json",
       "redteam_findings_3way.json",
+      "redteam_findings_deepseek.json",
       "redteam_findings.json",
     ];
     var bases = ["results/", "../results/", "../../results/"];
@@ -456,6 +457,7 @@
     if (m === "3way") return "3-way run";
     if (m === "2way") return "2-way run";
     if (m === "smoke") return "smoke test";
+    if (m === "deepseek") return "deepseek-v4 run";
     return m;
   }
 

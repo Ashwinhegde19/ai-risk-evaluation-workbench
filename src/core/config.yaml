@@ -25,8 +25,10 @@ target_models:
   - openai/gpt-5              # frontier, via Kilo
   - anthropic/claude-opus-4.1 # frontier, via Kilo
   - google/gemini-2.5-pro     # frontier, via Kilo
+  - deepseek/deepseek-v4-flash # frontier, via Kilo
   - qwen3-8b                  # open-source, via Modal L4 (self-deployed)
 # qwen3-8b is self-deployed on Modal.com L4 GPU (24 GB VRAM)
+# deepseek-v4-flash is the .env FRONTIER_MODEL / JUDGE_MODEL (Kilo slug).
 
 # -----------------------------------------------------------------------------
 # Model backends
