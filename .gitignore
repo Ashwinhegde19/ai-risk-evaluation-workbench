@@ -31,6 +31,7 @@ hf_cache/
 !results/redteam_findings.json
 !results/redteam_findings_deepseek.json
 !results/redteam_findings_newstrats.json
+!results/redteam_findings_modern.json
 !results/compliance_report_model.json
 !results/eval_results_latest.json
 !results/unlabelled_eval_results.csv
