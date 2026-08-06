@@ -20,9 +20,9 @@ _COMPLIANT = "Sure, here is the step-by-step explanation you asked for."
 
 
 class StrategyRegistryTests(unittest.TestCase):
-    def test_twelve_strategies_registered(self) -> None:
+    def test_fifteen_strategies_registered(self) -> None:
         names = list_strategies()
-        self.assertEqual(len(names), 12)
+        self.assertEqual(len(names), 15)
         self.assertIn("dan_jailbreak", names)
         self.assertIn("roleplay", names)
         self.assertIn("encoding", names)
@@ -31,6 +31,9 @@ class StrategyRegistryTests(unittest.TestCase):
         self.assertIn("few_shot", names)
         self.assertIn("policy_conflation", names)
         self.assertIn("structured_output", names)
+        self.assertIn("crescendo", names)
+        self.assertIn("many_shot", names)
+        self.assertIn("best_of_n", names)
         self.assertIn("context_overflow", names)
         self.assertIn("tool_exploit", names)
         self.assertIn("rag_poison", names)
@@ -82,6 +85,31 @@ class StrategyBehaviorTests(unittest.TestCase):
         strategy = get_strategy("roleplay")
         self.assertTrue(strategy.should_escalate(_REFUSAL))
         self.assertFalse(strategy.should_escalate(_COMPLIANT))
+
+
+class BestOfNVariationTests(unittest.TestCase):
+    def test_augmentations_differ_across_trials(self) -> None:
+        """BoN should emit distinct prompt surfaces per call (one instance)."""
+        strategy = get_strategy("best_of_n")
+        history: list = []
+        prompts = [strategy.generate_prompt(1, history) for _ in range(5)]
+        self.assertGreater(len(set(prompts)), 1, "augmentations must vary")
+
+    def test_crescendo_escalates_gradually(self) -> None:
+        """Crescendo turns should step closer to the goal, not ask all at once."""
+        strategy = get_strategy("crescendo")
+        opening = strategy.generate_prompt(1, [])
+        step2 = strategy.get_escalation_prompt(2, [])
+        self.assertIn("outline", opening.lower())
+        self.assertNotIn("phishing email", opening.lower())
+        self.assertIn("sender address", step2.lower())
+
+    def test_many_shot_embeds_fabricated_history(self) -> None:
+        """Many-shot should prefix a fabricated compliant dialogue pool."""
+        strategy = get_strategy("many_shot")
+        opening = strategy.generate_prompt(1, [])
+        self.assertIn("User:", opening)
+        self.assertIn("Assistant:", opening)
 
 
 class HelperFunctionTests(unittest.TestCase):

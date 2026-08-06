@@ -10,10 +10,13 @@ from __future__ import annotations
 from typing import Dict, List, Type
 
 from .base import AttackStrategy, analyze_response, has_refusal
+from .best_of_n import BestOfNStrategy
 from .context_overflow import ContextOverflowStrategy
+from .crescendo import CrescendoStrategy
 from .dan_jailbreak import DanJailbreakStrategy
 from .encoding import EncodingStrategy
 from .few_shot import FewShotStrategy
+from .many_shot import ManyShotStrategy
 from .memory_manip import MemoryManipStrategy
 from .multilingual import MultilingualStrategy
 from .policy_conflation import PolicyConflationStrategy
@@ -34,6 +37,9 @@ _STRATEGY_REGISTRY: Dict[str, Type[AttackStrategy]] = {
     "few_shot": FewShotStrategy,
     "policy_conflation": PolicyConflationStrategy,
     "structured_output": StructuredOutputStrategy,
+    "crescendo": CrescendoStrategy,
+    "many_shot": ManyShotStrategy,
+    "best_of_n": BestOfNStrategy,
     "context_overflow": ContextOverflowStrategy,
     "tool_exploit": ToolExploitStrategy,
     "rag_poison": RagPoisonStrategy,
@@ -90,10 +96,16 @@ __all__ = [
     "FewShotStrategy",
     "PolicyConflationStrategy",
     "StructuredOutputStrategy",
+    "CrescendoStrategy",
+    "ManyShotStrategy",
+    "BestOfNStrategy",
     "ContextOverflowStrategy",
     "ToolExploitStrategy",
     "RagPoisonStrategy",
     "MemoryManipStrategy",
+    "CrescendoStrategy",
+    "ManyShotStrategy",
+    "BestOfNStrategy",
     "list_strategies",
     "get_strategy",
     "all_strategies",
