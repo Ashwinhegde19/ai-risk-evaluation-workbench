@@ -9,6 +9,10 @@ __pycache__/
 # OS / editor
 .DS_Store
 
+# pi coding-agent runtime (session logs, subagent artifacts, local settings)
+.pi/
+.pi-subagents/
+
 # Generated run artifacts — never tracked.
 # (run_*.log / redteam*.log are covered by *.log; listed explicitly for clarity.)
 *.log
