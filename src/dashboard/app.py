@@ -4,13 +4,14 @@ Run with::
 
     streamlit run src/dashboard/app.py
 
-The app exposes five pages, selected from the sidebar:
+The app exposes six pages, selected from the sidebar:
 
 1. **Overview**         -- radar chart of safety scores per dimension + KPIs.
 2. **Model Comparison** -- side-by-side radar and per-(model, dimension) table.
 3. **Red-Team Results** -- attack-tree visualization with drill-down.
-4. **Compliance**       -- EU AI Act / NIST / ISO findings, gap analysis.
-5. **Trends**           -- historical score tracking over time.
+4. **Run Comparison**   -- break-rate evolution across red-team runs.
+5. **Compliance**       -- EU AI Act / NIST / ISO findings, gap analysis.
+6. **Trends**           -- historical score tracking over time.
 
 When no workbench artifacts are found on disk, the dashboard falls back to the
 deterministic demo dataset in :mod:`src.dashboard.sample_data`.
@@ -32,6 +33,7 @@ _PAGE_NAMES: List[str] = [
     "Overview",
     "Model Comparison",
     "Red-Team Results",
+    "Run Comparison",
     "Compliance",
     "Trends",
 ]
@@ -229,6 +231,169 @@ def page_redteam(data: DashboardData) -> None:
     )
 
 
+def page_run_comparison(data: DashboardData) -> None:
+    """Render the Run Comparison page: break-rate evolution across red-team runs.
+
+    Args:
+        data: The dashboard dataset.
+    """
+    st.header("Run Comparison")
+    st.markdown(
+        "Compare adversarial break rates across red-team runs. "
+        "Loads all ``redteam_findings*.json`` artifacts from the results directory "
+        "and shows how break rates evolved over time."
+    )
+
+    runs = components.load_redteam_runs("results")
+    if not runs:
+        st.info(
+            "No redteam findings files found in ``results/``. "
+            "Run the red-team agent first to generate comparison data."
+        )
+        return
+
+    # --- Summary table ---
+    st.subheader("Run summary")
+    summary_rows = []
+    for run in runs:
+        for model, stats in run["per_model"].items():
+            summary_rows.append(
+                {
+                    "run": run["label"],
+                    "model": model,
+                    "breaks": stats["breaks"],
+                    "total": stats["total"],
+                    "break_rate": f"{stats['rate']:.1%}",
+                    "wilson_low": f"{stats['wilson_low']:.1%}",
+                    "wilson_high": f"{stats['wilson_high']:.1%}",
+                }
+            )
+    st.dataframe(summary_rows, use_container_width=True)
+
+    # --- Break rate over time (per model) ---
+    st.subheader("Break rate over time")
+    models = sorted(
+        {m for run in runs for m in run["per_model"]}
+    )
+    selected_models = st.multiselect(
+        "Models to compare", options=models, default=models
+    )
+    if not selected_models:
+        st.warning("Select at least one model.")
+        return
+
+    fig = components.run_comparison_figure(runs, selected_models)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- Strategy breakdown per run ---
+    st.subheader("Strategy breakdown")
+    for run in runs:
+        if not run["per_strategy"]:
+            continue
+        with st.expander(f"{run['label']} — strategy detail"):
+            strat_rows = []
+            for strategy, stats in sorted(run["per_strategy"].items()):
+                strat_rows.append(
+                    {
+                        "strategy": strategy,
+                        "breaks": stats["breaks"],
+                        "total": stats["total"],
+                        "break_rate": f"{stats['rate']:.1%}",
+                        "wilson_low": f"{stats['wilson_low']:.1%}",
+                        "wilson_high": f"{stats['wilson_high']:.1%}",
+                    }
+                )
+            st.dataframe(strat_rows, use_container_width=True)
+
+    # --- Latest vs previous comparison ---
+    if len(runs) >= 2:
+        st.subheader("Latest vs previous run")
+        latest = runs[-1]
+        previous = runs[-2]
+        comparison_models = sorted(
+            set(latest["per_model"].keys()) | set(previous["per_model"].keys())
+        )
+        comp_rows = []
+        for model in comparison_models:
+            latest_stats = latest["per_model"].get(model)
+            prev_stats = previous["per_model"].get(model)
+            if latest_stats and prev_stats:
+                delta = latest_stats["rate"] - prev_stats["rate"]
+                direction = "↑ worse" if delta > 0 else ("↓ better" if delta < 0 else "→ unchanged")
+                comp_rows.append(
+                    {
+                        "model": model,
+                        f"{previous['label']}": f"{prev_stats['rate']:.1%}",
+                        f"{latest['label']}": f"{latest_stats['rate']:.1%}",
+                        "delta": f"{delta:+.1%}",
+                        "verdict": direction,
+                    }
+                )
+            elif latest_stats:
+                comp_rows.append(
+                    {
+                        "model": model,
+                        f"{previous['label']}": "N/A",
+                        f"{latest['label']}": f"{latest_stats['rate']:.1%}",
+                        "delta": "new",
+                        "verdict": "🆕 new run",
+                    }
+                )
+            elif prev_stats:
+                comp_rows.append(
+                    {
+                        "model": model,
+                        f"{previous['label']}": f"{prev_stats['rate']:.1%}",
+                        f"{latest['label']}": "N/A",
+                        "delta": "removed",
+                        "verdict": "⚠️ no longer in run",
+                    }
+                )
+        st.dataframe(comp_rows, use_container_width=True)
+
+        # Strategy-level delta
+        st.markdown("**Strategy-level deltas (latest vs previous)**")
+        all_strategies = sorted(
+            set(latest["per_strategy"].keys()) | set(previous["per_strategy"].keys())
+        )
+        for model in comparison_models:
+            st.markdown(f"### {model}")
+            strat_delta_rows = []
+            for strategy in all_strategies:
+                latest_s = latest["per_strategy"].get(strategy)
+                prev_s = previous["per_strategy"].get(strategy)
+                if latest_s and prev_s:
+                    delta = latest_s["rate"] - prev_s["rate"]
+                    strat_delta_rows.append(
+                        {
+                            "strategy": strategy,
+                            "previous": f"{prev_s['rate']:.1%}",
+                            "latest": f"{latest_s['rate']:.1%}",
+                            "delta": f"{delta:+.1%}",
+                        }
+                    )
+                elif latest_s:
+                    strat_delta_rows.append(
+                        {
+                            "strategy": strategy,
+                            "previous": "N/A",
+                            "latest": f"{latest_s['rate']:.1%}",
+                            "delta": "new",
+                        }
+                    )
+                elif prev_s:
+                    strat_delta_rows.append(
+                        {
+                            "strategy": strategy,
+                            "previous": f"{prev_s['rate']:.1%}",
+                            "latest": "N/A",
+                            "delta": "removed",
+                        }
+                    )
+            if strat_delta_rows:
+                st.dataframe(strat_delta_rows, use_container_width=True)
+
+
 def page_compliance(data: DashboardData) -> None:
     """Render the Compliance page: findings, gap analysis, exports.
 
@@ -361,6 +526,8 @@ def main(
         page_redteam(data)
     elif chosen == "Compliance":
         page_compliance(data)
+    elif chosen == "Run Comparison":
+        page_run_comparison(data)
     elif chosen == "Trends":
         page_trends(data)
     else:

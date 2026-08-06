@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from statistics import mean
 from typing import Any, Dict, List, Sequence
 
@@ -22,6 +23,8 @@ from src.core.models import (
     EvalResult,
     Severity,
 )
+from pathlib import Path
+
 from src.redteam.visualize import render_dot
 
 
@@ -378,6 +381,108 @@ def export_compliance_pdf(report: ComplianceReport, path: str | object) -> str:
     return str(out)
 
 
+def load_redteam_runs(data_dir: str | Path) -> List[dict]:
+    """Discover and load all ``redteam_findings*.json`` artifacts.
+
+    Files are sorted by filename (which contains timestamps) so the
+    oldest run comes first. Each entry in the returned list carries
+    a ``label`` key derived from the filename for display purposes.
+
+    Args:
+        data_dir: Directory to scan for redteam findings JSON files.
+
+    Returns:
+        A list of parsed redteam findings dicts, oldest first.
+    """
+    directory = Path(data_dir)
+    if not directory.is_dir():
+        return []
+
+    files = sorted(directory.glob("redteam_findings*.json"))
+    runs: List[dict] = []
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        # Build a human-readable label from the filename.
+        # e.g. redteam_findings_20260727T181758Z.json -> 2026-07-27 18:17 UTC
+        stem = f.stem  # "redteam_findings_20260727T181758Z"
+        label = stem.replace("redteam_findings_", "")
+        # Try to format the timestamp.
+        ts_match = re.match(r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?", label)
+        if ts_match:
+            label = (
+                f"{ts_match.group(1)}-{ts_match.group(2)}-{ts_match.group(3)} "
+                f"{ts_match.group(4)}:{ts_match.group(5)} UTC"
+            )
+        data["label"] = label
+        runs.append(data)
+    return runs
+
+
+def run_comparison_figure(
+    runs: List[dict],
+    models: List[str],
+) -> "Any":
+    """Build a Plotly line chart of break rates over red-team runs.
+
+    ``plotly`` is imported lazily so this module stays importable
+    without it installed.
+
+    Args:
+        runs: List of redteam findings dicts (oldest first), as
+            returned by :func:`load_redteam_runs`.
+        models: Subset of model names to plot.
+
+    Returns:
+        A :class:`plotly.graph_objects.Figure` with one trace per model.
+
+    Raises:
+        ImportError: If ``plotly`` is not installed.
+    """
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    colors = ["#C8402A", "#7C9A8D", "#E8C24A", "#6E8A7E", "#A99E8C", "#D9B45C"]
+
+    for idx, model in enumerate(models):
+        timestamps: List[str] = []
+        rates: List[float] = []
+        for run in runs:
+            stats = run.get("per_model", {}).get(model)
+            if stats is not None:
+                timestamps.append(run.get("label", ""))
+                rates.append(stats["rate"])
+        if not timestamps:
+            continue
+        color = colors[idx % len(colors)]
+        fig.add_trace(
+            go.Scatter(
+                x=timestamps,
+                y=[r * 100 for r in rates],
+                mode="lines+markers",
+                name=model,
+                line=dict(color=color, width=3),
+                marker=dict(size=10),
+                hovertemplate=(
+                    "%{x}<br>" + model + ": %{y:.1f}% break rate<extra></extra>"
+                ),
+            )
+        )
+
+    fig.update_layout(
+        title="Adversarial break rate over red-team runs",
+        xaxis_title="Run",
+        yaxis_title="Break rate (%)",
+        yaxis=dict(range=[0, 105]),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        template="plotly_dark",
+    )
+    return fig
+
+
 __all__ = [
     "DIMENSION_ORDER",
     "severity_from_score",
@@ -393,4 +498,6 @@ __all__ = [
     "trend_figure",
     "compliance_pdf_bytes",
     "export_compliance_pdf",
+    "load_redteam_runs",
+    "run_comparison_figure",
 ]
