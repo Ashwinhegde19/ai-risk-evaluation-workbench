@@ -20,7 +20,11 @@
     context_overflow: { harm: "robustness / context handling",              eu: "Art. 6 / Annex III", nist: "MEASURE-2.5", iso: "A.8.5" },
     tool_exploit:     { harm: "unsafe tool use / lack of oversight",        eu: "Art. 6 / Annex III", nist: "GOVERN-3.2",  iso: "A.8.5" },
     rag_poison:       { harm: "context integrity / data poisoning",         eu: "Art. 6 / Annex III", nist: "GOVERN-1.2",  iso: "A.8.3" },
-    memory_manip:     { harm: "memory integrity / context trust",           eu: "Art. 6 / Annex III", nist: "GOVERN-1.2",  iso: "A.8.3" }
+    memory_manip:     { harm: "memory integrity / context trust",           eu: "Art. 6 / Annex III", nist: "GOVERN-1.2",  iso: "A.8.3" },
+    few_shot:         { harm: "in-context learning / instruction following", eu: "Art. 6 / Annex III", nist: "MEASURE-2.5", iso: "A.8.5" },
+    syllogism:        { harm: "logical framing / reasoning coercion",       eu: "Art. 6 / Annex III", nist: "MEASURE-2.5", iso: "A.8.5" },
+    policy_conflation:{ harm: "authority conflation / role confusion",      eu: "Art. 6 / Annex III", nist: "GOVERN-3.2",  iso: "A.8.3" },
+    structured_output:{ harm: "structured-output / format circumvention",   eu: "Art. 6 / Annex III", nist: "MEASURE-2.5", iso: "A.8.5" }
   };
 
   var AUDIT_BUGS = [
@@ -415,6 +419,7 @@
       "redteam_findings_2way.json",
       "redteam_findings_3way.json",
       "redteam_findings_deepseek.json",
+      "redteam_findings_newstrats.json",
       "redteam_findings.json",
     ];
     var bases = ["results/", "../results/", "../../results/"];
@@ -458,6 +463,7 @@
     if (m === "2way") return "2-way run";
     if (m === "smoke") return "smoke test";
     if (m === "deepseek") return "deepseek-v4 run";
+    if (m === "newstrats") return "modern attacks run";
     return m;
   }
 
