@@ -39,6 +39,11 @@ guardrails = [
     "presidio-analyzer",
     "detoxify",
 ]
+# Mistral Shieldstral — policy-adaptive safety classifier.
+#   - mistralai: src/backends/base.py (MistralBackend, lazily imported)
+shieldstral = [
+    "mistralai>=1.0",
+]
 # Streamlit dashboard — src/dashboard/app.py imports streamlit eagerly;
 # plotly is imported lazily in components.py; graphviz charts are rendered by
 # Streamlit from DOT strings (the python `graphviz` package is not imported).
@@ -58,6 +63,7 @@ all = [
     "openai>=1.40",
     "anthropic",
     "httpx[http2]>=0.27",
+    "mistralai>=1.0",
     "presidio-analyzer",
     "detoxify",
     "streamlit>=1.30",

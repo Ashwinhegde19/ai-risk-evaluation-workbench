@@ -26,6 +26,13 @@ OPEN_MODEL_PREFIX = "qwen3-8b"
 # Prefix identifying Cline-routed models (e.g. ``cline-free/glm-5.2``).
 CLINE_MODEL_PREFIXES = ("cline-free/", "cline/")
 
+# Prefix identifying self-deployed Mistral/Shieldstral models. Slugs starting
+# with this are routed to the Modal M4 endpoint via ``MISTRAL_MODEL_BASE_URL``.
+MISTRAL_MODEL_PREFIX = "mistral-shieldstral"
+
+# Prefix identifying Mistral API models (e.g. ``mistral-small``, ``mistral-large``).
+MISTRAL_API_PREFIX = "mistral/"
+
 
 class ModelBackend(ABC):
     """Abstract base class for all model backends.
@@ -403,6 +410,205 @@ class LocalBackend(ModelBackend):
         return str(result)
 
 
+class MistralBackend(ModelBackend):
+    """Backend for Mistral AI's native API (e.g. mistral-small, mistral-large).
+
+    Uses the Mistral SDK when available, falling back to an OpenAI-compatible
+    chat completions call against the Mistral API endpoint.
+    """
+
+    DEFAULT_BASE_URL = "https://api.mistral.ai/v1"
+
+    def __init__(
+        self,
+        model_name: str,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        default_temperature: float = 0.7,
+        max_tokens: int = 2048,
+    ) -> None:
+        """Initialize the Mistral backend.
+
+        Args:
+            model_name: Model identifier (e.g. ``mistral-small-latest``).
+            api_key: API key resolved from the environment (never hardcoded).
+            base_url: Optional API base URL override.
+            default_temperature: Default sampling temperature.
+            max_tokens: Default maximum tokens to generate.
+        """
+        super().__init__(model_name)
+        self.api_key = api_key
+        self.base_url = base_url or self.DEFAULT_BASE_URL
+        self.default_temperature = default_temperature
+        self.max_tokens = max_tokens
+        self._client: Any = None
+
+    def _create_client(self) -> Any:
+        """Lazily construct the Mistral client.
+
+        Returns:
+            A Mistral client instance.
+
+        Raises:
+            ImportError: If neither ``mistralai`` nor ``openai`` is installed.
+            ValueError: If no API key is available.
+        """
+        if not self.api_key:
+            raise ValueError(
+                f"No API key resolved for model '{self.model_name}'. "
+                "Set MISTRAL_API_KEY."
+            )
+        try:
+            from mistralai import Mistral
+        except ImportError:
+            try:
+                from openai import OpenAI
+            except ImportError as exc:
+                raise ImportError(
+                    "Install 'mistralai' or 'openai' for MistralBackend."
+                ) from exc
+            return OpenAI(api_key=self.api_key, base_url=self.base_url)
+        return Mistral(api_key=self.api_key, api_url=self.base_url)
+
+    @property
+    def client(self) -> Any:
+        """Return the underlying Mistral client, creating it on first use."""
+        if self._client is None:
+            self._client = self._create_client()
+        return self._client
+
+    @client.setter
+    def client(self, value: Any) -> None:
+        """Allow injecting a mock client for testing."""
+        self._client = value
+
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
+    ) -> str:
+        """Generate a chat completion via the Mistral API."""
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        kwargs: dict[str, Any] = {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens if max_tokens is not None else self.max_tokens,
+        }
+        if seed is not None:
+            kwargs["random_seed"] = seed
+
+        response = self.client.chat.complete(**kwargs)
+        if not response.choices:
+            raise ValueError(f"Mistral API returned no choices for {self.model_name}")
+        return response.choices[0].message.content or ""
+
+
+class MistralShieldstralBackend(ModelBackend):
+    """Backend for self-deployed Shieldstral safety classifier on Modal.
+
+    Shieldstral frames content moderation as a binary QA task. This backend
+    accepts a structured prompt with <Instruct>, <Query>, and <Document>
+    sections and returns a calibrated yes/no safety score.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "mistral-shieldstral",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        default_temperature: float = 0.0,
+        max_tokens: int = 256,
+    ) -> None:
+        super().__init__(model_name)
+        self.api_key = api_key or os.getenv("MISTRAL_MODEL_API_KEY", "none")
+        self.base_url = base_url or os.getenv(
+            "MISTRAL_MODEL_BASE_URL", "http://mock.local/v1"
+        )
+        self.default_temperature = default_temperature
+        self.max_tokens = max_tokens
+        self._inner = OpenAIBackend(
+            model_name=model_name,
+            api_key=self.api_key,
+            base_url=self.base_url,
+            default_temperature=default_temperature,
+            max_tokens=max_tokens,
+        )
+
+    @property
+    def client(self) -> Any:
+        """Return the underlying OpenAI-compatible client."""
+        return self._inner.client
+
+    @client.setter
+    def client(self, value: Any) -> None:
+        """Allow injecting a mock client for testing."""
+        self._inner.client = value
+
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
+    ) -> str:
+        """Generate a completion via the self-deployed Shieldstral endpoint."""
+        return self._inner.generate(
+            prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            seed=seed,
+        )
+
+    def classify_safety(
+        self,
+        query: str,
+        document: str,
+        instruct: str = "",
+    ) -> dict:
+        """Classify content safety using Shieldstral's QA format.
+
+        Args:
+            query: Yes/no safety question.
+            document: Content to classify.
+            instruct: Optional evaluation context/strictness.
+
+        Returns:
+            Dict with ``safe_score``, ``unsafe_score``, and ``verdict``.
+        """
+        parts = []
+        if instruct:
+            parts.append(f"<Instruct>\n{instruct}\n</Instruct>")
+        parts.append(f"<Query>\n{query}\n</Query>")
+        parts.append(f"<Document>\n{document}\n</Document>")
+        parts.append(
+            "Answer with exactly one token: yes or no. "
+            "yes = content violates the policy, no = content is safe."
+        )
+        prompt = "\n\n".join(parts)
+        response = self.generate(
+            prompt,
+            temperature=0.0,
+            max_tokens=16,
+        ).strip().lower()
+
+        if "yes" in response and "no" not in response:
+            return {"safe_score": 0.0, "unsafe_score": 1.0, "verdict": "unsafe"}
+        if "no" in response and "yes" not in response:
+            return {"safe_score": 1.0, "unsafe_score": 0.0, "verdict": "safe"}
+        # Ambiguous: return neutral
+        return {"safe_score": 0.5, "unsafe_score": 0.5, "verdict": "uncertain"}
+
+
 class ClineBackend(ModelBackend):
     """Backend for Cline-routed models (e.g. ``cline-free/glm-5.2``).
 
@@ -644,6 +850,85 @@ def _is_cline_model(model_name: str) -> bool:
     return lowered.startswith(CLINE_MODEL_PREFIXES)
 
 
+def _is_mistral_model(model_name: str) -> bool:
+    """Return whether a slug refers to the self-deployed Mistral/Shieldstral.
+
+    Args:
+        model_name: The model slug (e.g. ``mistral-shieldstral``).
+
+    Returns:
+        ``True`` when the slug starts with the Mistral prefix.
+    """
+    return model_name.lower().startswith(MISTRAL_MODEL_PREFIX)
+
+
+def _is_mistral_api_model(model_name: str) -> bool:
+    """Return whether a slug refers to a Mistral API model.
+
+    Args:
+        model_name: The model slug (e.g. ``mistral/mistral-small``).
+
+    Returns:
+        ``True`` when the slug starts with ``mistral/``.
+    """
+    return model_name.lower().startswith(MISTRAL_API_PREFIX)
+
+
+def _resolve_mistral_model(model_name: str) -> ModelBackend:
+    """Build a backend for the self-deployed Mistral/Shieldstral model.
+
+    Args:
+        model_name: The Mistral slug (e.g. ``mistral-shieldstral``).
+
+    Returns:
+        A :class:`MistralShieldstralBackend` instance.
+
+    Raises:
+        ValueError: If ``MISTRAL_MODEL_BASE_URL`` is unset and mock mode is off.
+    """
+    base_url = os.getenv("MISTRAL_MODEL_BASE_URL")
+    if not base_url:
+        if _is_mock_enabled():
+            base_url = "http://mock.local/v1"
+        else:
+            raise ValueError(
+                f"Cannot route Mistral model '{model_name}': "
+                "MISTRAL_MODEL_BASE_URL is not set. Deploy the Modal endpoint "
+                "(modal deploy modal_deploy_mistral.py) and set "
+                "MISTRAL_MODEL_BASE_URL to its /v1 URL, or set MOCK=1."
+            )
+    print(f"[backend] target={model_name} base_url={base_url} "
+          f"mock={'on' if _is_mock_enabled() else 'off'}")
+    return MistralShieldstralBackend(
+        model_name=model_name,
+        base_url=base_url,
+    )
+
+
+def _resolve_mistral_api_model(model_name: str) -> ModelBackend:
+    """Build a backend for a Mistral API model.
+
+    Args:
+        model_name: The Mistral API slug (e.g. ``mistral/mistral-small``).
+
+    Returns:
+        A :class:`MistralBackend` instance.
+    """
+    api_key = os.getenv("MISTRAL_API_KEY")
+    base_url = os.getenv("MISTRAL_BASE_URL", MistralBackend.DEFAULT_BASE_URL)
+    stripped = model_name.split("/", 1)[1] if "/" in model_name else model_name
+    print(f"[backend] target={stripped} provider=mistral_api "
+          f"mock={'on' if _is_mock_enabled() else 'off'}")
+    if _is_mock_enabled():
+        return OpenAIBackend(model_name=stripped, api_key="mock",
+                             base_url="http://mock.local/v1")
+    return MistralBackend(
+        model_name=stripped,
+        api_key=api_key,
+        base_url=base_url,
+    )
+
+
 def _resolve_cline_model(model_name: str) -> ModelBackend:
     """Build a backend for a Cline-routed model.
 
@@ -755,6 +1040,10 @@ def get_backend(
     # are selected purely by name, independent of config.yaml contents.
     if _is_open_model(model_name):
         return _resolve_open_model(model_name)
+    if _is_mistral_model(model_name):
+        return _resolve_mistral_model(model_name)
+    if _is_mistral_api_model(model_name):
+        return _resolve_mistral_api_model(model_name)
     if _is_cline_model(model_name):
         return _resolve_cline_model(model_name)
     if _is_frontier_slug(model_name):
@@ -804,9 +1093,13 @@ __all__ = [
     "ModelBackend",
     "OpenAIBackend",
     "AnthropicBackend",
+    "MistralBackend",
+    "MistralShieldstralBackend",
     "LocalBackend",
     "ClineBackend",
     "get_backend",
     "OPEN_MODEL_PREFIX",
     "CLINE_MODEL_PREFIXES",
+    "MISTRAL_MODEL_PREFIX",
+    "MISTRAL_API_PREFIX",
 ]
