@@ -459,15 +459,24 @@
     var done = function () { render(); };
     if (location.protocol === "file:") { done(); return; }
     var rtUrls = ["results/redteam_findings.json", "../results/redteam_findings.json", "../../results/redteam_findings.json"];
+    var modernUrls = ["results/redteam_findings_modern.json", "../results/redteam_findings_modern.json", "../../results/redteam_findings_modern.json"];
     var compUrls = ["results/compliance_report_model.json", "../results/compliance_report_model.json", "../../results/compliance_report_model.json"];
     Promise.all([
       fetchFirstOk(rtUrls),
       fetchFirstOk(compUrls),
+      fetchFirstOk(modernUrls),
       loadEvolutionRuns(),
     ]).then(function (chunk) {
       if (chunk[0]) live.rt = chunk[0];
       if (chunk[1]) live.comp = chunk[1];
-      live.runs = chunk[2] || [];
+      // Merge the modern-run deepseek data into the main run so all models
+      // render dynamically from one source instead of hardcoded HTML.
+      if (chunk[2] && chunk[2].per_model && live.rt && live.rt.per_model) {
+        Object.keys(chunk[2].per_model).forEach(function (slug) {
+          if (!live.rt.per_model[slug]) live.rt.per_model[slug] = chunk[2].per_model[slug];
+        });
+      }
+      live.runs = chunk[3] || [];
       done();
     }).catch(function () { done(); });
   }
@@ -602,7 +611,11 @@
   function renderBoard() {
     var pm = rt().per_model;
     MODELS.forEach(function (md) {
-      var m = pm[md.slug] || { breaks: 0, total: 0, rate: 0, std: 0, wilson_low: 0, wilson_high: 0 };
+      // Only populate plates for models present in the fetched run. Models
+      // absent from this run (e.g. deepseek in redteam_findings_modern.json)
+      // keep their hardcoded HTML and are not overwritten with zeros.
+      if (!pm[md.slug]) return;
+      var m = pm[md.slug];
       var row = compRow(md.slug) || {};
       var id = md.plateId;
       var metaEl = document.getElementById(id + "-meta");
@@ -628,7 +641,8 @@
     plot.setAttribute("data-orient", vertical ? "v" : "h");
 
     MODELS.forEach(function (md) {
-      var m = pm[md.slug] || { wilson_low: 0, wilson_high: 0 };
+      if (!pm[md.slug]) return;
+      var m = pm[md.slug];
       var trackEl = document.getElementById("axis-" + md.axisId);
       var ciEl = document.getElementById("axis-" + md.axisId + "-ci");
       if (trackEl) trackEl.innerHTML = ciBarHTML(m.wilson_low, m.wilson_high, md.hue);
@@ -666,9 +680,7 @@
       '<span class="gap-marker__pts">' + points + " points</span>";
 
     document.getElementById("gap-note").innerHTML =
-      "GPT-5 and deepseek-v4-flash intervals overlap (both hold), but the holders' worst case (<b>" + pct(gapLo, 2) +
-      "</b>) sits <b>" + points + " points</b> below qwen3-8b's best case (<b>" + pct(gapHi, 2) +
-      "</b>). With n=75 per model and 95% Wilson intervals, the robustness gap is not noise.";
+      "GPT-5 holds (break rate 9.3%, Wilson <b>" + pct(gapLo, 2) + "</b>), but sits <b>" + points + " points</b> below qwen3-8b's best case (<b>" + pct(gapHi, 2) + "</b>). With n=75 per model and 95% Wilson intervals, the robustness gap is not noise.";
 
     document.getElementById("axis-ticks").innerHTML =
       [0, 25, 50, 75, 100].map(function (t) { return "<span>" + t + "</span>"; }).join("");
