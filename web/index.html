@@ -129,10 +129,10 @@
           <div class="plate__pct">
             <span class="num" id="edge-pct">0.0</span><span class="pct-sign">%</span>
           </div>
-          <p class="plate__ci">breaks 20/25 · wilson 95% <span id="edge-ci">[60.9%, 91.1%]</span></p>
+          <p class="plate__ci">breaks 16/75 · wilson 95% <span id="edge-ci">[13.6%, 31.9%]</span></p>
           <div class="plate__stamp"><span class="stamp stamp--fail" role="img" aria-label="Adversarial verdict: break">BREAK</span></div>
           <div class="plate__bar" id="edge-bar" aria-hidden="true"></div>
-          <p class="plate__note">Failed at 80% break rate under the modern 5-strategy run (<code>crescendo</code> 5/5, <code>many_shot</code> 5/5, <code>policy_conflation</code> 5/5, <code>structured_output</code> 5/5). The legacy 8-strategy baseline scored 0% — the attack taxonomy is what trips it, not the model tier.</p>
+          <p class="plate__note">Broke at 21.3% break rate. Breaks on 4 strategies: <code>structured_output</code> (5/5), <code>many_shot</code> (5/5), <code>policy_conflation</code> (4/5), <code>multilingual</code> (1/5), <code>roleplay</code> (1/5). More robust than qwen3-8b (66.7%) but less than gpt-5 (9.3%).
         </article>
 
         <figure class="axis reveal" role="img" aria-label="Shared 0 to 100 percent axis. GPT-9.3% break rate (7/75, Wilson 4.6–18.0%), deepseek-v4-flash 0% (0/40, Wilson 0.0–8.8%), qwen3-8b 66.7% (50/75, Wilson 55.4–76.3%). The gap between the holder cluster and qwen3-8b is marked as statistically significant.">

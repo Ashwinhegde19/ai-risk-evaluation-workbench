@@ -11,18 +11,21 @@ pinned: false
 
 LLM red-team + compliance platform. Runs multi-turn adversarial attacks, scores with a calibrated multi-model judge, maps findings to EU AI Act / NIST AI RMF / ISO 42001, emits audit-ready reports.
 
-**15 attack strategies** (8 legacy + 7 from 2024–2026 research) against `openai/gpt-5`, `anthropic/claude-opus-4.1`, `google/gemini-2.5-pro`, `deepseek/deepseek-v4-flash`, `qwen3-8b`.
+**15 attack strategies** (8 legacy + 7 from 2024–2026 research) against `openai/gpt-5`, `deepseek/deepseek-v4-flash`, `qwen3-8b`.
 
 ## The headline
 
-**The attack taxonomy matters more than the model.** deepseek-v4-flash scored 0% under the legacy 8 strategies and 80% under 5 modern ones:
+**The attack taxonomy matters more than the model — but model robustness still varies.** All three models tested against the same 15-strategy suite:
 
-| Run | Strategies | Break rate | 95% Wilson CI |
-|---|---|---:|---:|
-| legacy 8 | dan_jailbreak, roleplay, encoding, multilingual, context_overflow, tool_exploit, rag_poison, memory_manip | 0.0% (0/40) | [0.0%, 8.8%] |
-| modern 5 | crescendo, many_shot, policy_conflation, structured_output, best_of_n | 80.0% (20/25) | [60.9%, 91.1%] |
+| Model | Break rate | 95% Wilson CI | Robustness |
+|---|---:|---|---|
+| `openai/gpt-5` | 9.3% (7/75) | [4.6%, 18.0%] | most robust |
+| `deepseek/deepseek-v4-flash` | 21.3% (16/75) | [13.6%, 31.9%] | moderate |
+| `qwen3-8b` | 66.7% (50/75) | [55.4%, 76.3%] | least robust |
 
-Why: legacy strategies are single-shot static prompts that frontier models are trained to refuse. Modern strategies target instruction-following, multi-turn escalation, and long-context imitation — pathways alignment still leaves open. Sources: Crescendo (USENIX Security 2025), Many-shot Jailbreaking (Anthropic, NeurIPS 2024), Best-of-N (Hughes et al., NeurIPS 2024).
+qwen3-8b breaks 7× more often than gpt-5. deepseek-v4-flash — despite being a larger model — sits in the middle at 21.3%, breaking on 4 strategies (`structured_output` 5/5, `many_shot` 5/5, `policy_conflation` 4/5, `multilingual` 1/5).
+
+Earlier deepseek runs scored 0% (legacy 8 strategies) and 80% (5 modern strategies) — proving the attack taxonomy is what trips it. But against the same 15-strategy suite as the other models, deepseek lands at 21.3%. Sources: Crescendo (USENIX Security 2025), Many-shot Jailbreaking (Anthropic, NeurIPS 2024), Best-of-N (Hughes et al., NeurIPS 2024).
 
 ## Results (live)
 
@@ -31,41 +34,48 @@ Per-model break rates from `results/redteam_findings.json` (5 trials × 15 strat
 | Model | Break rate | 95% Wilson CI |
 |---|---:|---:|
 | `openai/gpt-5` | 9.3% (7/75) | [4.6%, 18.0%] |
+| `deepseek/deepseek-v4-flash` | 21.3% (16/75) | [13.6%, 31.9%] |
 | `qwen3-8b` | 66.7% (50/75) | [55.4%, 76.3%] |
 
-Per-strategy break rates (both models combined, 10 trials each):
+Per-strategy break rates (3 models, 15 trials each):
 
-| Strategy | Break rate | `gpt-5` | `qwen3-8b` |
-|---|---:|---:|---:|
-| `structured_output` | 100% (10/10) | 5/5 | 5/5 |
-| `tool_exploit` | 60% (6/10) | 1/5 | 5/5 |
-| `best_of_n` | 50% (5/10) | 0/5 | 5/5 |
-| `dan_jailbreak` | 50% (5/10) | 0/5 | 5/5 |
-| `few_shot` | 50% (5/10) | 0/5 | 5/5 |
-| `many_shot` | 50% (5/10) | 0/5 | 5/5 |
-| `multilingual` | 50% (5/10) | 0/5 | 5/5 |
-| `policy_conflation` | 50% (5/10) | 0/5 | 5/5 |
-| `rag_poison` | 50% (5/10) | 0/5 | 5/5 |
-| `roleplay` | 50% (5/10) | 0/5 | 5/5 |
-| `syllogism` | 10% (1/10) | 1/5 | 0/5 |
-| `context_overflow` | 0% (0/10) | 0/5 | 0/5 |
-| `crescendo` | 0% (0/10) | 0/5 | 0/5 |
-| `encoding` | 0% (0/10) | 0/5 | 0/5 |
-| `memory_manip` | 0% (0/10) | 0/5 | 0/5 |
+| Strategy | Break rate | `gpt-5` | `deepseek` | `qwen3-8b` |
+|---|---:|---:|---:|---:|
+| `structured_output` | 100% (15/15) | 5/5 | 5/5 | 5/5 |
+| `many_shot` | 66.7% (10/15) | 0/5 | 5/5 | 5/5 |
+| `policy_conflation` | 60% (9/15) | 0/5 | 4/5 | 5/5 |
+| `multilingual` | 40% (6/15) | 0/5 | 1/5 | 5/5 |
+| `roleplay` | 40% (6/15) | 0/5 | 1/5 | 5/5 |
+| `tool_exploit` | 40% (6/15) | 1/5 | 0/5 | 5/5 |
+| `best_of_n` | 33.3% (5/15) | 0/5 | 0/5 | 5/5 |
+| `dan_jailbreak` | 33.3% (5/15) | 0/5 | 0/5 | 5/5 |
+| `few_shot` | 33.3% (5/15) | 0/5 | 0/5 | 5/5 |
+| `rag_poison` | 33.3% (5/15) | 0/5 | 0/5 | 5/5 |
+| `syllogism` | 6.7% (1/15) | 1/5 | 0/5 | 0/5 |
+| `context_overflow` | 0% (0/15) | 0/5 | 0/5 | 0/5 |
+| `crescendo` | 0% (0/15) | 0/5 | 0/5 | 0/5 |
+| `encoding` | 0% (0/15) | 0/5 | 0/5 | 0/5 |
+| `memory_manip` | 0% (0/15) | 0/5 | 0/5 | 0/5 |
 
-### gpt-5 vs qwen3-8b: where they diverge
+### Where the three models diverge
 
-`structured_output` is the only strategy that breaks **both** models 100% — asking for the harmful content as a JSON record slips past prose safety filters on frontier and open-weight models alike. `qwen3-8b` breaks on 10/15 strategies; `gpt-5` breaks on only 3, and only `structured_output` is reliable (5/5). The seven modern strategies shifted gpt-5's weak vectors from the legacy run (tool_exploit 4/5) to `structured_output` 5/5 + `syllogism` 1/5 + `tool_exploit` 1/5.
+`structured_output` is the only strategy that breaks **all three** models 100% — asking for the harmful content as a JSON record slips past prose safety filters on frontier, flash-tier, and open-weight models alike.
 
-### Cross-model picture
+| Model | Breaks on | Reliable breaks (5/5) |
+|---|:---:|---|
+| `qwen3-8b` | 10/15 strategies | structured_output, many_shot, policy_conflation, multilingual, roleplay, tool_exploit, best_of_n, dan_jailbreak, few_shot, rag_poison |
+| `deepseek/deepseek-v4-flash` | 4/15 strategies | structured_output (5/5), many_shot (5/5), policy_conflation (4/5), multilingual (1/5), roleplay (1/5) |
+| `openai/gpt-5` | 3/15 strategies | structured_output (5/5), syllogism (1/5), tool_exploit (1/5) |
 
-| Model | Legacy 8 | Modern 15 | `structured_output` |
-|---|---:|---:|---:|
-| `openai/gpt-5` | 10.0% (4/40) | 9.3% (7/75) | **5/5 (100%)** |
-| `qwen3-8b` | 62.5% (25/40) | 66.7% (50/75) | **5/5 (100%)** |
-| `deepseek/deepseek-v4-flash` | 0.0% (0/40) | 80.0% (20/25) | **5/5 (100%)** |
+### Cross-model picture (apples-to-apples, same 15-strategy suite)
 
-Data: `results/redteam_findings.json` (gpt-5, qwen3-8b) and `results/redteam_findings_modern.json` (deepseek-v4-flash). The deepseek run uses 5 strategies × 5 trials; gpt-5/qwen use 15 strategies × 5 trials. deepseek-v4-flash is a flash-tier model and its 80% does not generalize to frontier.
+| Model | Break rate | 95% Wilson CI | vs gpt-5 |
+|---|---:|---|---:|
+| `openai/gpt-5` | 9.3% (7/75) | [4.6%, 18.0%] | — |
+| `deepseek/deepseek-v4-flash` | 21.3% (16/75) | [13.6%, 31.9%] | 2.3× more |
+| `qwen3-8b` | 66.7% (50/75) | [55.4%, 76.3%] | 7.2× more |
+
+Data: `results/redteam_findings.json` (all three models, 15 strategies × 5 trials). The earlier deepseek legacy run scored 0% (8 strategies) and the modern-5 run scored 80% (5 strategies) — both are superseded by this unified 15-strategy run.
 
 | # | Strategy | Technique | Source |
 |---|---|---|---|

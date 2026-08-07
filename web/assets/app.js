@@ -459,24 +459,15 @@
     var done = function () { render(); };
     if (location.protocol === "file:") { done(); return; }
     var rtUrls = ["results/redteam_findings.json", "../results/redteam_findings.json", "../../results/redteam_findings.json"];
-    var modernUrls = ["results/redteam_findings_modern.json", "../results/redteam_findings_modern.json", "../../results/redteam_findings_modern.json"];
     var compUrls = ["results/compliance_report_model.json", "../results/compliance_report_model.json", "../../results/compliance_report_model.json"];
     Promise.all([
       fetchFirstOk(rtUrls),
       fetchFirstOk(compUrls),
-      fetchFirstOk(modernUrls),
       loadEvolutionRuns(),
     ]).then(function (chunk) {
       if (chunk[0]) live.rt = chunk[0];
       if (chunk[1]) live.comp = chunk[1];
-      // Merge the modern-run deepseek data into the main run so all models
-      // render dynamically from one source instead of hardcoded HTML.
-      if (chunk[2] && chunk[2].per_model && live.rt && live.rt.per_model) {
-        Object.keys(chunk[2].per_model).forEach(function (slug) {
-          if (!live.rt.per_model[slug]) live.rt.per_model[slug] = chunk[2].per_model[slug];
-        });
-      }
-      live.runs = chunk[3] || [];
+      live.runs = chunk[2] || [];
       done();
     }).catch(function () { done(); });
   }
