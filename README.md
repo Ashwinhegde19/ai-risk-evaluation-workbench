@@ -148,6 +148,7 @@ python3 -m src.redteam.human_review score \
 - **Use-case class:** `src/compliance/system_class.py` (legal class from purpose, not scores)
 - **Residual mapping:** `src/compliance/eu_ai_act.py` and `src/compliance/redteam_mapping.py`
 - **Results JSONs:** `results/redteam_findings*.json` (raw trial-level data)
+- **Thesis draft:** `reports/thesis.md` and `reports/thesis.docx`
 - **Human vs judge:** `docs/HUMAN_ADJUDICATION.md` (48 labels, 75% agreement)
 - **Full technical docs:** see `docs/ARCHITECTURE.md` and `docs/EVALUATION.md` in the repo
 
