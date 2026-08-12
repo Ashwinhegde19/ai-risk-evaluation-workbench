@@ -93,10 +93,13 @@ def _compliance_section(report: Optional[ComplianceReport]) -> str:
         return "_Compliance report was not generated for this build._"
     n_critical = sum(1 for f in report.findings if f.severity == Severity.CRITICAL)
     return (
-        f"**Overall risk tier:** `{report.overall_risk_tier.value}`  \n"
-        f"**Findings:** {len(report.findings)} "
+        f"**Declared use case:** `{getattr(report, 'system_use_case', 'gpai_or_chatbot')}`  \n"
+        f"**EU AI Act class (from use case, not scores):** "
+        f"`{report.overall_risk_tier.value}`  \n"
+        f"**Residual findings:** {len(report.findings)} "
         f"(critical: {n_critical})  \n"
-        f"**Gaps / recommendations:** {len(report.gaps)}"
+        f"**Gaps / recommendations:** {len(report.gaps)}  \n"
+        f"_Not an EU AI Act conformity assessment._"
     )
 
 

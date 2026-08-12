@@ -117,7 +117,7 @@ class RedteamMappingTests(unittest.TestCase):
         eu = [f for f in findings if f.framework == ComplianceFramework.EU_AI_ACT]
         self.assertEqual(len(eu), 1)
         self.assertEqual(eu[0].risk_tier, RiskTier.HIGH)
-        self.assertIn("Art. 6", eu[0].control_id)
+        self.assertIn("Art. 15", eu[0].control_id)
         self.assertIn("roleplay", eu[0].evidence)
 
     def test_rag_poison_break_maps_to_integrity_control(self):

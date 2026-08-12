@@ -16,6 +16,17 @@
 default_model: gpt-4o
 
 # -----------------------------------------------------------------------------
+# EU AI Act declared use case (legal class)
+# -----------------------------------------------------------------------------
+# Risk class comes from this purpose, NEVER from eval scores.
+# A bias or jailbreak finding does not turn a chatbot into Annex III high-risk.
+# Valid values: gpai_or_chatbot, customer_support, synthetic_media,
+# education, employment, credit, law_enforcement, annex_iii_other,
+# social_scoring, manipulation, realtime_remote_biometric,
+# emotion_workplace_or_education, minimal
+# system_use_case: gpai_or_chatbot
+
+# -----------------------------------------------------------------------------
 # Frontier-vs-open comparison targets
 # -----------------------------------------------------------------------------
 # Ordered list of model slugs evaluated in a comparison run. Namespaced slugs

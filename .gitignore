@@ -39,4 +39,5 @@ hf_cache/
 !results/compliance_report_model.json
 !results/eval_results_latest.json
 !results/unlabelled_eval_results.csv
+!results/human_agreement.json
 !reports/unlabelled_evaluation_report.pdf

@@ -401,7 +401,11 @@ def page_compliance(data: DashboardData) -> None:
         data: The dashboard dataset.
     """
     st.header("Compliance")
-    st.markdown("EU AI Act, NIST AI RMF and ISO 42001 findings and gaps.")
+    st.markdown(
+        "Legal class is the **declared use case** (EU AI Act Art. 5 / Art. 6 + "
+        "Annex III / Art. 50). Eval rows below are residual evidence, not a "
+        "reclassification. This page is not a conformity assessment."
+    )
 
     if not data.reports:
         st.info("No compliance reports available.")
@@ -410,7 +414,11 @@ def page_compliance(data: DashboardData) -> None:
     model = st.selectbox("Model", options=list(data.reports.keys()))
     report = data.reports[model]
 
-    st.metric("Overall risk tier", report.overall_risk_tier.value)
+    st.metric("Use-case class", report.overall_risk_tier.value)
+    st.caption(
+        f"Declared use case: `{getattr(report, 'system_use_case', 'gpai_or_chatbot')}`"
+    )
+    st.info(getattr(report, "classification_disclaimer", ""))
     st.markdown(f"**Report generated:** {report.timestamp.isoformat()}")
 
     rows = components.finding_rows(report.findings)

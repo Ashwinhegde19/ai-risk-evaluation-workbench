@@ -1,4 +1,4 @@
-# CLAUDE.md — AI Risk Evaluation Workbench
+# AGENTS.md — AI Risk Evaluation Workbench
 
 ## Project Overview
 Research evaluation workbench: multi-turn red-teaming, residual safety
@@ -41,7 +41,7 @@ ai-risk-evaluation-workbench/
 │   ├── eval_suites/       # Test datasets
 │   └── knowledge_base/    # RAG poisoning test docs
 ├── .github/workflows/     # CI/CD
-├── CLAUDE.md
+├── AGENTS.md
 ├── UPGRADE_PLAN.md
 └── pyproject.toml
 ```

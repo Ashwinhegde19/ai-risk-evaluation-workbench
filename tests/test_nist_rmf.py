@@ -48,12 +48,12 @@ class MapToNistRmfTests(unittest.TestCase):
         findings = map_to_nist_rmf([_result("bias", 0.3, Severity.HIGH)])
         self.assertEqual(findings[0].framework, ComplianceFramework.NIST_RMF)
 
-    def test_risk_tier_consistent_with_eu_mapping(self) -> None:
-        # social_scoring is UNACCEPTABLE under the EU AI Act; NIST must agree.
+    def test_risk_tier_follows_declared_system_class(self) -> None:
+        # A social-scoring *probe* on the default chatbot class stays limited.
         findings = map_to_nist_rmf(
             [_result("social_scoring", 0.1, Severity.CRITICAL)]
         )
-        self.assertEqual(findings[0].risk_tier, RiskTier.UNACCEPTABLE)
+        self.assertEqual(findings[0].risk_tier, RiskTier.LIMITED)
 
     def test_excludes_below_threshold(self) -> None:
         findings = map_to_nist_rmf([_result("bias", 0.9, Severity.LOW)])

@@ -64,15 +64,18 @@ class ReportBuildTests(unittest.TestCase):
             },
         )
 
-    def test_overall_tier_is_highest(self) -> None:
-        # social_scoring is UNACCEPTABLE -> overall must be UNACCEPTABLE.
-        self.assertEqual(self.report.overall_risk_tier, RiskTier.UNACCEPTABLE)
+    def test_overall_tier_follows_declared_use_case(self) -> None:
+        # Default use case is GPAI/chatbot. A social_scoring *eval* must not
+        # reclassify the system as Art. 5 prohibited.
+        self.assertEqual(self.report.overall_risk_tier, RiskTier.LIMITED)
+        self.assertEqual(self.report.system_use_case, "gpai_or_chatbot")
 
-    def test_overall_tier_minimal_when_no_findings(self) -> None:
+    def test_overall_tier_stays_use_case_when_no_findings(self) -> None:
         clean = generate_compliance_report(
             "clean-model", [_result("toxicity", 0.9, Severity.LOW)], timestamp=self.ts
         )
-        self.assertEqual(clean.overall_risk_tier, RiskTier.MINIMAL)
+        # Clean scores do not downgrade the declared GPAI/chatbot class.
+        self.assertEqual(clean.overall_risk_tier, RiskTier.LIMITED)
 
     def test_timestamp_preserved(self) -> None:
         self.assertEqual(self.report.timestamp, self.ts)
@@ -87,7 +90,8 @@ class GeneratorHelperTests(unittest.TestCase):
         gen = ComplianceReportGenerator("m", _sample_results())
         summary = gen.executive_summary()
         self.assertIn("m", summary)
-        self.assertIn("unacceptable", summary.lower())
+        self.assertIn("limited", summary.lower())
+        self.assertIn("use case", summary.lower())
 
     def test_gap_analysis_structure(self) -> None:
         gen = ComplianceReportGenerator("m", _sample_results())
@@ -109,7 +113,8 @@ class JsonReportTests(unittest.TestCase):
         gen = ComplianceReportGenerator("m", _sample_results())
         payload = json.loads(gen.to_json())
         self.assertEqual(payload["model_name"], "m")
-        self.assertEqual(payload["overall_risk_tier"], "unacceptable")
+        self.assertEqual(payload["overall_risk_tier"], "limited")
+        self.assertEqual(payload["system_use_case"], "gpai_or_chatbot")
         self.assertGreater(len(payload["findings"]), 0)
 
     def test_write_json_report_creates_file(self) -> None:

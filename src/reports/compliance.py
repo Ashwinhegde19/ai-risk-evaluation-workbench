@@ -28,7 +28,7 @@ from src.core.models import (
     RiskTier,
 )
 from src.compliance._common import max_risk_tier
-from src.compliance.eu_ai_act import classify_risk_tier
+from src.compliance.eu_ai_act import classify_risk_tier, prohibited_use_finding
 from src.compliance.iso_42001 import map_to_iso_42001
 from src.compliance.nist_rmf import map_to_nist_rmf
 from src.compliance.redteam_mapping import (
@@ -36,6 +36,11 @@ from src.compliance.redteam_mapping import (
     adversarial_finding,
     adversarial_risk_tier,
     map_redteam_findings,
+)
+from src.compliance.system_class import (
+    LEGAL_DISCLAIMER,
+    SystemClassification,
+    parse_use_case,
 )
 from src.reports._pdf import write_pdf
 
@@ -59,6 +64,7 @@ class ComplianceReportGenerator:
         redteam_findings: List[dict] | None = None,
         deployment_context: DeploymentContext = DeploymentContext.LIMITED,
         per_model: List[Dict[str, object]] | None = None,
+        system_use_case: str | None = None,
     ) -> None:
         """Initialize the generator.
 
@@ -70,10 +76,13 @@ class ComplianceReportGenerator:
                 strategy, broke, turn, final_score, snippet?}``). When supplied,
                 breaks are mapped to compliance findings and the report becomes
                 adversarially-aware.
-            deployment_context: Scales the red-team risk tier (default LIMITED).
+            deployment_context: Legacy high/limited/minimal flag used when
+                ``system_use_case`` is omitted.
             per_model: Optional combined per-model summary rows (``{model,
                 passive_tier, adversarial_tier, break_rate, certificate}``)
                 rendered as a table in combined multi-model reports.
+            system_use_case: Explicit EU AI Act use case. This — not eval
+                scores — sets the report's legal class.
         """
         self.model_name = model_name
         self.eval_results: List[EvalResult] = list(eval_results)
@@ -81,6 +90,9 @@ class ComplianceReportGenerator:
         self.redteam_findings: List[dict] = list(redteam_findings or [])
         self.deployment_context = deployment_context
         self.per_model: List[Dict[str, object]] = list(per_model or [])
+        self.system_class: SystemClassification = parse_use_case(
+            system_use_case, deployment_context
+        )
         self._findings: List[ComplianceFinding] | None = None
         self._redteam_compliance: List[ComplianceFinding] | None = None
 
@@ -93,10 +105,18 @@ class ComplianceReportGenerator:
             :meth:`build_redteam_findings`.
         """
         if self._findings is None:
+            prohibited = prohibited_use_finding(self.system_class)
             self._findings = (
-                classify_risk_tier(self.eval_results)
-                + map_to_nist_rmf(self.eval_results)
-                + map_to_iso_42001(self.eval_results)
+                ([prohibited] if prohibited is not None else [])
+                + classify_risk_tier(
+                    self.eval_results, system_class=self.system_class
+                )
+                + map_to_nist_rmf(
+                    self.eval_results, system_class=self.system_class
+                )
+                + map_to_iso_42001(
+                    self.eval_results, system_class=self.system_class
+                )
             )
         return self._findings
 
@@ -186,12 +206,13 @@ class ComplianceReportGenerator:
         """
         findings = self.build_findings()
         redteam = self.build_redteam_findings()
-        overall = max_risk_tier([f.risk_tier for f in findings + redteam])
+        # Legal class is the declared use case. Never take max(eval tiers).
+        overall = self.system_class.risk_tier
 
         break_rates = self._break_rates()
         adv_tier: RiskTier | None = None
         if self.redteam_findings:
-            # The adversarial tier is the worst per-model tier observed.
+            # Residual robustness label — not a legal reclassification.
             adv_tier = max_risk_tier(
                 [
                     adversarial_risk_tier(rate, self.deployment_context)
@@ -205,6 +226,8 @@ class ComplianceReportGenerator:
             findings=findings,
             redteam_findings=redteam,
             overall_risk_tier=overall,
+            system_use_case=self.system_class.use_case.value,
+            classification_disclaimer=LEGAL_DISCLAIMER,
             adversarial_risk_tier=adv_tier,
             per_model=self.per_model,
             gaps=self.recommendations(),
@@ -236,11 +259,14 @@ class ComplianceReportGenerator:
             f"{tier}={count}" for tier, count in per_tier.items()
         ) or "none"
         return (
-            f"Compliance assessment for model '{report.model_name}' "
+            f"Evaluation record for model '{report.model_name}' "
             f"generated {report.timestamp.isoformat()}.\n"
-            f"Overall risk tier: {report.overall_risk_tier.value}.\n"
-            f"Findings by framework: {framework_line}.\n"
-            f"Findings by risk tier: {tier_line}."
+            f"Declared use case: {report.system_use_case} "
+            f"(legal class: {report.overall_risk_tier.value}). "
+            f"{self.system_class.rationale}\n"
+            f"Residual findings by framework: {framework_line}.\n"
+            f"Residual findings by risk tier: {tier_line}.\n"
+            f"{report.classification_disclaimer}"
         )
 
     def gap_analysis(self, report: ComplianceReport | None = None) -> Dict[str, object]:
@@ -298,6 +324,12 @@ class ComplianceReportGenerator:
         lines: List[str] = []
         lines += textwrap.wrap(self.executive_summary(report), _WRAP_WIDTH) or [""]
         lines.append("")
+        lines.append("=== Legal class (use case, not eval scores) ===")
+        lines.append(f"Use case: {report.system_use_case}")
+        lines.append(f"EU AI Act class: {report.overall_risk_tier.value}")
+        for wrapped in textwrap.wrap(self.system_class.rationale, _WRAP_WIDTH):
+            lines.append(wrapped)
+        lines.append("")
         if report.per_model:
             lines.append("=== Per-Model Summary (Passive + Adversarial) ===")
             lines.append(
@@ -321,8 +353,8 @@ class ComplianceReportGenerator:
                     f"| {row.get('certificate', '-')}"
                 )
             lines.append("")
-        lines.append("=== Passive Compliance ===")
-        lines.append(f"Overall risk tier: {report.overall_risk_tier.value}")
+        lines.append("=== Residual eval findings (not a risk-class change) ===")
+        lines.append(f"Declared legal class: {report.overall_risk_tier.value}")
         if not report.findings:
             lines.append("No compliance findings (all dimensions within tolerance).")
         for finding in report.findings:
@@ -358,8 +390,9 @@ class ComplianceReportGenerator:
         else:
             lines.append("No gaps identified.")
         title = (
-            f"AI Compliance Report -- {report.model_name} "
-            f"({report.overall_risk_tier.value})"
+            f"AI Evaluation Record -- {report.model_name} "
+            f"(use case: {report.system_use_case}, "
+            f"class: {report.overall_risk_tier.value})"
         )
         return write_pdf(path, title, lines)
 
@@ -370,6 +403,7 @@ def generate_compliance_report(
     timestamp: datetime | None = None,
     redteam_findings: List[dict] | None = None,
     deployment_context: DeploymentContext = DeploymentContext.LIMITED,
+    system_use_case: str | None = None,
 ) -> ComplianceReport:
     """One-shot builder returning a populated :class:`ComplianceReport`.
 
@@ -389,6 +423,7 @@ def generate_compliance_report(
         timestamp=timestamp,
         redteam_findings=redteam_findings,
         deployment_context=deployment_context,
+        system_use_case=system_use_case,
     ).build_report()
 
 

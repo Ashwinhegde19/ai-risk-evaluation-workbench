@@ -222,7 +222,23 @@ class ComplianceReport(BaseWorkbenchModel):
         ),
     )
     overall_risk_tier: RiskTier = Field(
-        ..., description="Highest risk tier across all findings."
+        ...,
+        description=(
+            "EU AI Act class of the *declared use case*, not the worst eval "
+            "score. Eval findings are residual evidence under that class."
+        ),
+    )
+    system_use_case: str = Field(
+        default="gpai_or_chatbot",
+        description="Declared intended purpose used to assign overall_risk_tier.",
+    )
+    classification_disclaimer: str = Field(
+        default=(
+            "This is a research evaluation record, not an EU AI Act conformity "
+            "assessment, CE marking, notified-body certificate, or legal opinion. "
+            "Risk class comes from the declared use case, not from eval scores."
+        ),
+        description="Required notice that this report is not a legal certificate.",
     )
     adversarial_risk_tier: Optional[RiskTier] = Field(
         default=None,

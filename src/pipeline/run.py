@@ -6,9 +6,10 @@ automation-friendly entry point used by the GitHub Actions workflow
 
 1. **Eval suite** -- score the target model on every risk dimension.
 2. **Red-team** -- run adaptive multi-turn attacks against the model.
-3. **Compliance report** -- map results onto EU AI Act / NIST / ISO 42001.
+3. **Compliance report** -- classify the *declared use case* under the EU AI
+   Act, then attach residual eval/red-team evidence (not a legal certificate).
 4. **Regression detection** -- compare scores to the previous run.
-5. **Certificate** -- issue a compliance certificate if all gates pass.
+5. **Eval-gate record** -- issue a gate record if residual checks pass.
 6. **Artifacts** -- write the report (JSON + PDF) and certificate to disk.
 
 The whole pipeline can run fully offline by passing ``--mock`` (the default in
@@ -107,8 +108,16 @@ class PipelineConfig(BaseWorkbenchModel):
     deployment_context: str = Field(
         default="limited",
         description=(
-            "Deployment context that scales red-team break risk "
-            "('high_risk' | 'limited' | 'minimal')."
+            "Declared use-case class: 'high_risk' (unspecified Annex III), "
+            "'limited' (GPAI/chatbot, Art. 50), or 'minimal'. Eval scores "
+            "do not change this class."
+        ),
+    )
+    system_use_case: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional explicit EU AI Act use case (e.g. 'employment', "
+            "'credit', 'gpai_or_chatbot'). Overrides deployment_context."
         ),
     )
     post_comment: bool = Field(
@@ -423,6 +432,7 @@ def run_pipeline(
         timestamp=run_at,
         redteam_findings=redteam_findings,
         deployment_context=deployment_context,
+        system_use_case=config.system_use_case,
     )
     compliance_report = report_generator.build_report()
 
@@ -623,6 +633,23 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Red-team strategies to use ('all' for every strategy).",
     )
     parser.add_argument(
+        "--deployment-context",
+        choices=["high_risk", "limited", "minimal"],
+        default="limited",
+        help=(
+            "Declared use-case class: high_risk=Annex III, limited=GPAI/chatbot, "
+            "minimal=residual only. Default: limited."
+        ),
+    )
+    parser.add_argument(
+        "--system-use-case",
+        default=None,
+        help=(
+            "Explicit EU AI Act use case (employment, credit, gpai_or_chatbot, "
+            "...). Overrides --deployment-context for legal class."
+        ),
+    )
+    parser.add_argument(
         "--post-comment",
         action="store_true",
         help="Post a PR comment (requires GITHUB_TOKEN / repo / PR number).",
@@ -687,6 +714,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         report_dir=args.report_dir,
         max_redteam_turns=args.max_redteam_turns,
         redteam_strategies=args.redteam_strategies,
+        deployment_context=args.deployment_context,
+        system_use_case=args.system_use_case,
         post_comment=args.post_comment,
     )
 

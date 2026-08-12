@@ -103,7 +103,7 @@ class FormatMarkdownTests(unittest.TestCase):
         report = _compliance_report(RiskTier.HIGH)
         md = format_eval_markdown("m", [], compliance_report=report)
         self.assertIn("high", md)
-        self.assertIn("Findings:", md)
+        self.assertIn("Residual findings:", md)
 
     def test_sections_present_when_all_provided(self):
         md = format_eval_markdown(

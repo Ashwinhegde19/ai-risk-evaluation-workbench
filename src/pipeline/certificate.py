@@ -1,12 +1,12 @@
-"""Compliance certificate generation for the CI/CD evaluation pipeline.
+"""Eval-gate record generation for the CI/CD evaluation pipeline.
 
-When a model run passes every automated gate -- no critical compliance
-findings, no unacceptable risk tier, and no critical score regression -- the
-pipeline can issue a :class:`ComplianceCertificate`. The certificate is a
-self-contained, machine-readable attestation (JSON) capturing the model,
-evaluation scores, the frameworks that were checked, and a bounded validity
-period. It is intended to be committed as a build artifact and consumed by
-downstream release gates.
+When a model run passes every automated gate -- no Art. 5 (prohibited) use
+case, no critical residual findings, and no critical score regression -- the
+pipeline can issue a :class:`ComplianceCertificate`. That object is an
+**eval-gate record**, not an EU AI Act conformity assessment, CE mark, or
+notified-body certificate. A high-risk *use case* still passes the gate if
+residual findings are non-critical: being Annex III is the declared purpose,
+not a test failure.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 
 from pydantic import ConfigDict, Field, field_validator
 
+from src.compliance.system_class import LEGAL_DISCLAIMER
 from src.core.models import (
     BaseWorkbenchModel,
     ComplianceFramework,
@@ -37,7 +38,7 @@ class CertificateStatus(str, Enum):
 
 
 class ComplianceCertificate(BaseWorkbenchModel):
-    """A machine-readable attestation that a model passed its eval gates."""
+    """A machine-readable eval-gate record. Not a legal certificate."""
 
     model_config = ConfigDict(strict=True)
 
@@ -66,7 +67,11 @@ class ComplianceCertificate(BaseWorkbenchModel):
     )
     notes: List[str] = Field(
         default_factory=list,
-        description="Human-readable reasons the certificate passed or failed.",
+        description="Human-readable reasons the eval gate passed or failed.",
+    )
+    disclaimer: str = Field(
+        default=LEGAL_DISCLAIMER,
+        description="Required notice that this is not an EU AI Act certificate.",
     )
 
     @field_validator("generated_at", "validity_start", "validity_end", mode="before")
@@ -186,9 +191,12 @@ def build_certificate(
     frameworks = frameworks_checked or [f.value for f in ComplianceFramework]
     passed = all_checks_pass(eval_results, compliance_report, regression_report)
 
-    notes: List[str] = []
+    notes: List[str] = [LEGAL_DISCLAIMER]
     if passed:
-        notes.append("All automated compliance gates passed.")
+        notes.append(
+            "All automated eval gates passed. This is not an EU AI Act "
+            "conformity assessment."
+        )
     else:
         if compliance_report.overall_risk_tier == RiskTier.UNACCEPTABLE:
             notes.append("Overall risk tier is unacceptable.")
@@ -217,6 +225,7 @@ def build_certificate(
         validity_end=issued + timedelta(days=validity_days),
         status=CertificateStatus.PASS if passed else CertificateStatus.FAIL,
         notes=notes,
+        disclaimer=LEGAL_DISCLAIMER,
     )
 
 

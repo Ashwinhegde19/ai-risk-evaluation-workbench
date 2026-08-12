@@ -90,28 +90,26 @@ def _adversarial_tier_label(
 
 
 def _overall_risk_tier_label(report: object, per_model_rates: dict[str, float]) -> str:
-    """Compute the overall risk tier label.
+    """Display label for the declared use-case class.
 
-    Returns the higher of:
-        1. The simplified display tier from the compliance report.
-        2. The worst break-rate tier across models.
+    Break rates must not upgrade this label. Residual robustness lives on
+    ``adversarial_tier``, not on the legal class.
 
     Args:
         report: A ComplianceReport (duck-typed) with ``overall_risk_tier``.
-        per_model_rates: {model_name: break_rate}.
+        per_model_rates: Unused; kept so callers do not change.
 
     Returns:
         "low", "medium", or "high".
     """
-    # Map RiskTier values to simplified labels.
-    tier_map = {"unacceptable": "high", "high": "high", "limited": "medium", "minimal": "low"}
-    candidate = tier_map.get(report.overall_risk_tier.value, "low")
-    order = {"low": 0, "medium": 1, "high": 2}
-    for rate in per_model_rates.values():
-        br_tier = _break_rate_tier(rate)
-        if order[br_tier] > order[candidate]:
-            candidate = br_tier
-    return candidate
+    del per_model_rates
+    tier_map = {
+        "unacceptable": "high",
+        "high": "high",
+        "limited": "medium",
+        "minimal": "low",
+    }
+    return tier_map.get(report.overall_risk_tier.value, "low")
 
 
 def _compute_rates_from_findings(
@@ -359,6 +357,7 @@ def generate_report(
     output_dir: Path,
     model_name: str = "model",
     deployment_context_str: str = "high",
+    system_use_case: str | None = None,
 ) -> dict:
     """Generate compliance reports from passive and red-team results.
 
@@ -369,8 +368,9 @@ def generate_report(
         deployment_context: Deployment context for adversarial risk scaling.
         output_dir: Directory for output artifacts.
         model_name: Name of the model being reported on.
-        deployment_context_str: Raw "low"/"medium"/"high" string for tier
-            computation.
+        deployment_context_str: Raw "low"/"medium"/"high" string for residual
+            robustness labels.
+        system_use_case: Optional explicit EU AI Act use case.
 
     Returns:
         A dict with ``json_path``, ``pdf_path``, ``report``, ``overall_tier``,
@@ -411,6 +411,7 @@ def generate_report(
         redteam_findings=redteam_findings,
         deployment_context=deployment_context,
         per_model=per_model,
+        system_use_case=system_use_case,
     )
     report = generator.build_report()
 
@@ -494,8 +495,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--deployment-context",
         choices=["low", "medium", "high"],
-        default="high",
-        help="Deployment context for adversarial risk scaling (default: high).",
+        default="medium",
+        help=(
+            "Declared use-case class: high=unspecified Annex III, "
+            "medium=GPAI/chatbot (Art. 50), low=minimal. Default: medium. "
+            "Eval scores do not change this class."
+        ),
+    )
+    parser.add_argument(
+        "--system-use-case",
+        default=None,
+        help=(
+            "Explicit EU AI Act use case (employment, credit, gpai_or_chatbot, "
+            "...). Overrides --deployment-context for legal class."
+        ),
     )
     parser.add_argument(
         "--out",
@@ -537,6 +550,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             output_dir=args.out,
             model_name=args.model_name,
             deployment_context_str=args.deployment_context,
+            system_use_case=args.system_use_case,
         )
     except FileNotFoundError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -546,9 +560,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     # Print the spec-required 3-line summary.
-    print(f"Overall risk tier: {result['overall_tier']}")
-    print(f"Adversarial risk tier: {result['adversarial_tier']}")
-    print(f"Findings: {result['passive_count']} passive, {result['redteam_count']} red-team")
+    print(f"Use-case class: {result['overall_tier']} (not from eval scores)")
+    print(f"Residual robustness label: {result['adversarial_tier']}")
+    print(
+        f"Residual findings: {result['passive_count']} eval, "
+        f"{result['redteam_count']} red-team"
+    )
 
     return 0
 

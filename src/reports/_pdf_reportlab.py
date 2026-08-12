@@ -97,8 +97,10 @@ def write_pdf_reportlab(
     overall_tier = getattr(
         getattr(report, "overall_risk_tier", None), "value", "unknown"
     )
+    use_case = getattr(report, "system_use_case", "gpai_or_chatbot")
     story.append(Paragraph(
-        f"AI Compliance Report &mdash; {model_name} ({overall_tier})",
+        f"AI Evaluation Record &mdash; {model_name} "
+        f"(use case: {use_case}, class: {overall_tier})",
         title_style,
     ))
     story.append(Spacer(1, 0.2 * inch))
@@ -114,12 +116,15 @@ def write_pdf_reportlab(
     )
     ts = getattr(report, "timestamp", None)
     ts_str = ts.isoformat() if ts is not None else "N/A"
+    disclaimer = getattr(report, "classification_disclaimer", "")
     summary_text = (
-        f"Compliance assessment for model <b>'{model_name}'</b> generated "
+        f"Evaluation record for model <b>'{model_name}'</b> generated "
         f"{ts_str}.<br/>"
-        f"Overall risk tier: <b>{overall_tier}</b>.<br/>"
-        f"Adversarial risk tier: <b>{adv_tier}</b>.<br/>"
-        f"Findings: {passive_count} passive, {redteam_count} red-team."
+        f"Declared use case: <b>{use_case}</b>. "
+        f"Legal class (from use case, not scores): <b>{overall_tier}</b>.<br/>"
+        f"Residual robustness label: <b>{adv_tier}</b>.<br/>"
+        f"Residual findings: {passive_count} eval, {redteam_count} red-team.<br/>"
+        f"{disclaimer}"
     )
     story.append(Paragraph(summary_text, body_style))
     story.append(Spacer(1, 0.2 * inch))

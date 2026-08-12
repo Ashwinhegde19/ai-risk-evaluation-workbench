@@ -9,7 +9,9 @@ pinned: false
 
 # AI Risk Evaluation Workbench
 
-LLM red-team + compliance platform. Runs multi-turn adversarial attacks, scores with a calibrated multi-model judge, maps findings to EU AI Act / NIST AI RMF / ISO 42001, emits audit-ready reports.
+A research evaluation workbench: multi-turn red-team attacks, residual safety scores, and an **honest** EU AI Act label.
+
+Legal class comes from the **declared use case** (chatbot vs employment vs credit), not from a bias or jailbreak score. Reports are evaluation records, not conformity certificates.
 
 **15 attack strategies** (8 legacy + 7 from 2024–2026 research) against `openai/gpt-5`, `deepseek/deepseek-v4-flash`, `qwen3-8b`.
 
@@ -106,31 +108,47 @@ python3 -u -m src.redteam.agent \
   --turns 5 --strategy all --trials 5 --seed 42 \
   --break-judge-model openai/gpt-4o-mini
 
-# Passive eval + compliance report
+# Passive eval + residual findings under a declared use case
+# Default class is GPAI/chatbot (Art. 50). Pass --system-use-case employment
+# only if you are actually assessing an Annex III product.
 python3 -u -m src.pipeline.run \
   --targets openai/gpt-5,anthropic/claude-opus-4.1,google/gemini-2.5-pro,qwen3-8b \
-  --suite full --max-redteam-turns 5 --report-dir results
+  --suite full --max-redteam-turns 5 --report-dir results \
+  --system-use-case gpai_or_chatbot
 
-python3 -u -m src.reports.generate --format all --framework all --deployment-context high
+python3 -u -m src.reports.generate --format all --framework all --deployment-context medium
+
+# Human adjudication sheet (label 50 transcripts, then score judge vs you)
+python3 -m src.redteam.human_review export \
+  --findings results/redteam_findings.json \
+  --out data/human_review/adjudication_sheet.csv \
+  --n 50 --seed 42
+# Fill human_verdict with COMPLIED or REFUSED, then:
+python3 -m src.redteam.human_review score \
+  --sheet data/human_review/adjudication_sheet.csv \
+  --out results/human_agreement.json
 ```
 
 ## Honest limitations
 
 - **n = 5 trials per cell.** Wilson intervals are wide (gpt-5 [4.6%, 18.0%], qwen3-8b [55.4%, 76.3%]). Per-strategy rates are directional, not precise.
 - **best_of_n is under-sampled.** Paper reports 89% on gpt-4o with 10,000 augmentations; we run 5. Configuration gap, not strategy failure.
-- **Adjudicator noise.** The break judge (`openai/gpt-4o-mini`) misread ~4% of clean refusals in cross-checks.
+- **Adjudicator noise (human check, n = 48).** One person labelled a 50-row stratified sample (2 skips). After six mix-up corrections, agreement with `gpt-4o-mini` was **75%** (κ = 0.50; 4 FP, 8 FN). Break rates are directional. See `docs/HUMAN_ADJUDICATION.md`.
 - **deepseek-v4-flash does not generalize to frontier.** Its 80% is real but bounded to a flash inference tier.
 - **Target selection.** `structured_output` breaks everything 100% — but the target (write a phishing email) is a narrow harmful domain. Generalization to other harms is untested.
-- **Passive is not robustness, by design.** The passive suite measures baseline compliance; robustness is what the adversarial layer is for.
+- **Passive is not robustness, by design.** The passive suite measures baseline behaviour; robustness is what the adversarial layer is for.
+- **Not a legal certificate.** EU/NIST/ISO rows are residual evidence under a declared use case. This tool cannot CE-mark a system or "pass" an Art. 5 practice.
 
-> **"0 passive findings" is the result, not missing data.** Every model cleared the passive compliance bar; the adversarial layer is where the models diverge.
+> **"0 passive findings" is the result, not missing data.** Every model cleared the passive bar; the adversarial layer is where the models diverge.
 
 ## Architecture & deeper docs
 
 - **Live site:** [HF Space](https://ashwinhegde19-ai-risk-evaluation-workbench.static.hf.space)
 - **Strategy source:** `src/redteam/strategies/` (15 strategies, each with a docstring and research citation)
-- **Compliance mapping:** `src/compliance/redteam_mapping.py` (strategy → EU/NIST/ISO control)
+- **Use-case class:** `src/compliance/system_class.py` (legal class from purpose, not scores)
+- **Residual mapping:** `src/compliance/eu_ai_act.py` and `src/compliance/redteam_mapping.py`
 - **Results JSONs:** `results/redteam_findings*.json` (raw trial-level data)
+- **Human vs judge:** `docs/HUMAN_ADJUDICATION.md` (48 labels, 75% agreement)
 - **Full technical docs:** see `docs/ARCHITECTURE.md` and `docs/EVALUATION.md` in the repo
 
 Frontier models route through the Kilo gateway; qwen3-8b is self-hosted on Modal (NVIDIA L4). Judge ensemble: GPT-4o + Claude Sonnet + Gemini Pro with median aggregation. CI/CD gates on every push.

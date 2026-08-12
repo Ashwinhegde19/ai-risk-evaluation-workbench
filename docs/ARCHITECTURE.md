@@ -15,7 +15,7 @@ All data flows through strict Pydantic v2 models defined in `src/core/models.py`
 | `AttackTurn` | `turn_number`, `attacker_prompt`, `model_response`, `strategy_used`, `escalation_level` | One turn in a multi-turn attack |
 | `AttackTree` | `root_prompt`, `turns[]`, `final_score` [0,1], `strategy_chain[]`, `success` | A complete multi-turn attack record |
 | `ComplianceFinding` | `framework`, `control_id`, `risk_tier`, `description`, `evidence`, `severity` | One eval result mapped to a regulatory control |
-| `ComplianceReport` | `model_name`, `timestamp`, `findings[]`, `overall_risk_tier`, `gaps[]` | Audit-ready report for one model |
+| `ComplianceReport` | `model_name`, `timestamp`, `findings[]`, `overall_risk_tier` (use-case class), `system_use_case`, `classification_disclaimer`, `gaps[]` | Evaluation record; not a conformity certificate |
 | `GuardrailResult` | `check_type`, `triggered`, `details`, `severity` | Outcome of one guardrail check |
 
 ### Enums
@@ -84,7 +84,8 @@ The `base.py` module also provides `analyze_response(response) -> float` (heuris
 
 Three mappers, each following the same pattern: a dimension-to-control dictionary, a `classify_dimension_*()` resolver, and a `map_to_*()` function that emits `ComplianceFinding` objects for eval results meeting a severity threshold (default: MEDIUM).
 
-- **`eu_ai_act.py`** — Maps dimensions to EU AI Act articles and risk tiers. Canonical source for `RiskTier` used by all frameworks.
+- **`system_class.py`** — Legal class from the *declared use case* (Art. 5 / Art. 6 + Annex III / Art. 50 / Chapter V). Eval scores never assign this class.
+- **`eu_ai_act.py`** — Maps eval dimensions to residual duties (Art. 10/15/50/53). Finding `risk_tier` is the system class, not a score-derived upgrade.
 - **`nist_rmf.py`** — Maps to NIST AI RMF functions (GOVERN/MAP/MEASURE/MANAGE) with `FUNCTION-SUBSECTION` control IDs.
 - **`iso_42001.py`** — Maps to ISO 42001 Annex A controls (A.7 impact assessment, A.8 lifecycle) with `A.<section>.<n>` IDs.
 

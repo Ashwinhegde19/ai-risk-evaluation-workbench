@@ -8,9 +8,9 @@ Maps evaluation results onto the four core NIST AI RMF functions:
     * MANAGE  -- mitigation, monitoring
 
 Each finding receives a control identifier of the form ``FUNCTION-SUBSECTION``
-(e.g. ``MEASURE-2.6``). The assigned risk tier is taken from the canonical EU
-AI Act mapping (see :mod:`src.compliance.eu_ai_act`) so that the same
-underlying issue carries a consistent tier across all frameworks.
+(e.g. ``MEASURE-2.6``). The assigned risk tier is the *declared system class*
+(see :mod:`src.compliance.system_class`), never a tier invented from the
+eval dimension name.
 """
 
 from __future__ import annotations
@@ -18,14 +18,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List
 
+from src.compliance._common import evidence_for, severity_meets
+from src.compliance.system_class import (
+    DEFAULT_USE_CASE,
+    SystemClassification,
+    classify_system,
+)
 from src.core.models import (
     ComplianceFinding,
     ComplianceFramework,
     EvalResult,
     Severity,
 )
-from src.compliance._common import evidence_for, severity_meets
-from src.compliance.eu_ai_act import classify_dimension
 
 
 @dataclass(frozen=True)
@@ -128,34 +132,36 @@ def classify_dimension_nist(dimension: str) -> NISTControl:
 def map_to_nist_rmf(
     eval_results: List[EvalResult],
     severity_threshold: Severity = Severity.MEDIUM,
+    system_class: SystemClassification | None = None,
 ) -> List[ComplianceFinding]:
     """Map evaluation results to NIST AI RMF compliance findings.
 
     A finding is emitted for every eval result whose severity meets or exceeds
     ``severity_threshold``. Each finding cites the relevant RMF function and a
     ``FUNCTION-SUBSECTION`` control identifier (e.g. ``MEASURE-2.6``).
+    ``risk_tier`` is the declared EU AI Act system class, shared across
+    frameworks so a chatbot is not labelled high-risk because of a bias score.
 
     Args:
         eval_results: Evaluation outcomes to map.
         severity_threshold: Minimum severity required to raise a finding.
+        system_class: Declared use-case classification.
 
     Returns:
         NIST AI RMF compliance findings, one per qualifying eval result.
     """
+    classification = system_class or classify_system(DEFAULT_USE_CASE)
     findings: List[ComplianceFinding] = []
     for result in eval_results:
         if not severity_meets(result, severity_threshold):
             continue
         control = classify_dimension_nist(result.dimension)
-        # Risk tier is sourced from the canonical EU AI Act mapping so that
-        # a given issue carries a consistent tier across frameworks.
-        risk_tier = classify_dimension(result.dimension).risk_tier
         control_id = f"{control.function}-{control.subsection}"
         findings.append(
             ComplianceFinding(
                 framework=ComplianceFramework.NIST_RMF,
                 control_id=control_id,
-                risk_tier=risk_tier,
+                risk_tier=classification.risk_tier,
                 description=control.description,
                 evidence=evidence_for(result),
                 severity=result.severity,

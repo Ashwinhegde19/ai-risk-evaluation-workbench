@@ -6,9 +6,9 @@ Maps evaluation results onto ISO/IEC 42001 Annex A controls, focusing on:
     * A.8 -- AI system lifecycle
 
 Each finding receives a control identifier of the form ``A.<section>.<n>``
-(e.g. ``A.7.2``). The assigned risk tier is taken from the canonical EU AI Act
-mapping (see :mod:`src.compliance.eu_ai_act`) so that the same underlying issue
-carries a consistent tier across all frameworks.
+(e.g. ``A.7.2``). The assigned risk tier is the *declared system class*
+(see :mod:`src.compliance.system_class`), never a tier invented from the
+eval dimension name.
 """
 
 from __future__ import annotations
@@ -16,14 +16,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List
 
+from src.compliance._common import evidence_for, severity_meets
+from src.compliance.system_class import (
+    DEFAULT_USE_CASE,
+    SystemClassification,
+    classify_system,
+)
 from src.core.models import (
     ComplianceFinding,
     ComplianceFramework,
     EvalResult,
     Severity,
 )
-from src.compliance._common import evidence_for, severity_meets
-from src.compliance.eu_ai_act import classify_dimension
 
 
 @dataclass(frozen=True)
@@ -127,33 +131,33 @@ def classify_dimension_iso(dimension: str) -> ISOControl:
 def map_to_iso_42001(
     eval_results: List[EvalResult],
     severity_threshold: Severity = Severity.MEDIUM,
+    system_class: SystemClassification | None = None,
 ) -> List[ComplianceFinding]:
     """Map evaluation results to ISO/IEC 42001 compliance findings.
 
     A finding is emitted for every eval result whose severity meets or exceeds
     ``severity_threshold``. Each finding cites the relevant Annex A control
-    identifier (e.g. ``A.7.2``).
+    identifier (e.g. ``A.7.2``). ``risk_tier`` is the declared system class.
 
     Args:
         eval_results: Evaluation outcomes to map.
         severity_threshold: Minimum severity required to raise a finding.
+        system_class: Declared use-case classification.
 
     Returns:
         ISO/IEC 42001 compliance findings, one per qualifying eval result.
     """
+    classification = system_class or classify_system(DEFAULT_USE_CASE)
     findings: List[ComplianceFinding] = []
     for result in eval_results:
         if not severity_meets(result, severity_threshold):
             continue
         control = classify_dimension_iso(result.dimension)
-        # Risk tier is sourced from the canonical EU AI Act mapping so that
-        # a given issue carries a consistent tier across frameworks.
-        risk_tier = classify_dimension(result.dimension).risk_tier
         findings.append(
             ComplianceFinding(
                 framework=ComplianceFramework.ISO_42001,
                 control_id=control.control_id,
-                risk_tier=risk_tier,
+                risk_tier=classification.risk_tier,
                 description=control.description,
                 evidence=evidence_for(result),
                 severity=result.severity,

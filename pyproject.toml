@@ -78,6 +78,7 @@ all = [
 [project.scripts]
 ai-risk-eval = "src.pipeline.run:main"
 ai-risk-demo = "src.demo.generate:main"
+ai-risk-review = "src.redteam.human_review:main"
 
 [tool.setuptools.packages.find]
 include = ["src*"]

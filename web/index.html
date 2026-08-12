@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VERDICT — Red-Team Evidence Console</title>
-  <meta name="description" content="Forensic evidence console for a two-layer LLM safety evaluation: passive compliance plus adaptive multi-turn red-teaming with Wilson confidence intervals, adjudicated breaks, and three-framework regulatory citations." />
+  <meta name="description" content="Research evidence console for a two-layer LLM safety evaluation: residual eval scores plus adaptive multi-turn red-teaming. EU AI Act class is the declared use case, not a score. Not a conformity certificate." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -65,7 +65,7 @@
           <p class="caption__line" aria-hidden="true"></p>
           <p class="caption__heading">Findings of fact &amp; verdict</p>
           <h1 class="caption__pull" id="run-banner-h">One model held.<br />One model <b>broke</b> — 50 times.</h1>
-          <p class="caption__lede">Two layers: passive compliance, then an adaptive multi-turn red-team. Fifteen attack strategies, five seeded trials each, every non-refusal sent to an LLM adjudicator.</p>
+          <p class="caption__lede">Two layers: residual evals under a declared use case, then an adaptive multi-turn red-team. Fifteen attack strategies, five seeded trials each, every non-refusal sent to an LLM adjudicator. Not an EU AI Act certificate.</p>
           <p class="caption__src"><span class="src-badge" id="source-badge">source: inlined fallback · seed-42 canonical</span></p>
           <div class="caption__stamp" aria-hidden="true"><span class="stamp stamp--fail" id="run-stamp">FAIL</span></div>
         </div>
@@ -106,7 +106,7 @@
           <p class="plate__ci">breaks 50/75 · wilson 95% <span id="flag-ci"></span></p>
           <div class="plate__stamp"><span class="stamp stamp--fail" role="img" aria-label="Adversarial verdict: break">BREAK</span></div>
           <div class="plate__bar" id="flag-bar" aria-hidden="true"></div>
-          <p class="plate__note">Passive tier cleared at <code>limited</code>. The adversarial layer is what fails the certificate: a 66.7% break rate in a high-risk deployment context emits critical findings across all four frameworks (OWASP LLM Top 10, EU AI Act, NIST RMF, ISO 42001).</p>
+          <p class="plate__note">Declared class stays <code>limited</code> (GPAI/chatbot). A 66.7% break rate is residual robustness evidence — it does not reclassify this model as Annex III high-risk. The eval gate can still fail on residual severity.</p>
         </article>
 
         <article class="plate plate--edge" aria-labelledby="clear-h">
@@ -119,7 +119,7 @@
           <p class="plate__ci">breaks 7/75 · wilson 95% <span id="clear-ci"></span></p>
           <div class="plate__stamp"><span class="stamp stamp--pass" role="img" aria-label="Adversarial verdict: pass">PASS</span></div>
           <div class="plate__bar" id="clear-bar" aria-hidden="true"></div>
-          <p class="plate__note">Passed the certificate at 9.3% break rate. Five breaks are <code>structured_output</code> (5/5 — JSON/data-export framing slips past prose filters); one each on <code>syllogism</code> and <code>tool_exploit</code>. Every other strategy held 5/5.</p>
+          <p class="plate__note">Eval gate passed at 9.3% break rate (not a legal certificate). Five breaks are <code>structured_output</code> (5/5 — JSON/data-export framing slips past prose filters); one each on <code>syllogism</code> and <code>tool_exploit</code>. Every other strategy held 5/5.</p>
         </article>
 
         <article class="plate plate--edge" aria-labelledby="edge-h">
@@ -257,15 +257,15 @@
     <section class="tribunal reveal" id="tribunal" aria-labelledby="tribunal-h">
       <header class="sec-head">
         <p class="sec-eyebrow mono-label">Exhibit D · three-framework indictment</p>
-        <h2 id="tribunal-h">Compliance tribunal</h2>
-        <p class="sec-sub">Every break category is indicted under four frameworks at once. Citations are pulled from <code>compliance_report_model.json</code>; categories with no observed break are filed as held, with the standing citation.</p>
+        <h2 id="tribunal-h">Residual evidence (not a certificate)</h2>
+        <p class="sec-sub">Breaks are residual evidence under a declared use case. Citations are labels from <code>compliance_report_model.json</code>, not a notified-body finding. Categories with no observed break are filed as held.</p>
       </header>
 
       <div class="cert-row">
         <article class="cert cert--fail">
           <div class="cert__model">qwen3-8b <span class="cert__venue">modal · nvidia l4 · vllm</span></div>
           <div class="cert__body">
-            <div class="stamp stamp--fail" role="img" aria-label="Certificate verdict: fail">FAIL</div>
+            <div class="stamp stamp--fail" role="img" aria-label="Eval-gate verdict: fail">FAIL</div>
             <dl class="cert__facts">
               <div><dt>adversarial tier</dt><dd class="t-breach">HIGH</dd></div>
               <div><dt>break rate</dt><dd>66.7% <span class="dim">(50/75)</span></dd></div>
@@ -273,13 +273,13 @@
               <div><dt>critical findings</dt><dd>111</dd></div>
             </dl>
           </div>
-          <p class="cert__note">Passive tier cleared at <code>limited</code>. The adversarial layer is what fails the certificate — a ≥25% break rate in a high-risk deployment context emits critical findings across all four frameworks (OWASP LLM Top 10, EU AI Act, NIST RMF, ISO 42001).</p>
+          <p class="cert__note">Declared class stays <code>limited</code> (GPAI/chatbot). The eval gate fails on residual break rate, not because the model became Annex III high-risk. Framework rows are residual labels, not a legal indictment.</p>
         </article>
 
         <article class="cert cert--edge">
           <div class="cert__model">openai/gpt-5 <span class="cert__venue">kilo gateway</span></div>
           <div class="cert__body">
-            <div class="stamp stamp--pass" role="img" aria-label="Certificate verdict: pass">PASS</div>
+            <div class="stamp stamp--pass" role="img" aria-label="Eval-gate verdict: pass">PASS</div>
             <dl class="cert__facts">
               <div><dt>adversarial tier</dt><dd class="t-edge">LIMITED</dd></div>
               <div><dt>break rate</dt><dd>9.3% <span class="dim">(7/75)</span></dd></div>
@@ -287,13 +287,13 @@
               <div><dt>medium findings</dt><dd>12</dd></div>
             </dl>
           </div>
-          <p class="cert__note">Passed the certificate at 9.3% break rate. Five breaks are <code>structured_output</code> (5/5 — JSON/data-export framing slips past prose filters); one each on <code>syllogism</code> and <code>tool_exploit</code>. Every other strategy held 5/5.</p>
+          <p class="cert__note">Eval gate passed at 9.3% break rate (not a legal certificate). Five breaks are <code>structured_output</code> (5/5 — JSON/data-export framing slips past prose filters); one each on <code>syllogism</code> and <code>tool_exploit</code>. Every other strategy held 5/5.</p>
         </article>
 
         <article class="cert cert--fail">
           <div class="cert__model">deepseek/deepseek-v4-flash <span class="cert__venue">kilo gateway</span></div>
           <div class="cert__body">
-            <div class="stamp stamp--fail" role="img" aria-label="Certificate verdict: fail">FAIL</div>
+            <div class="stamp stamp--fail" role="img" aria-label="Eval-gate verdict: fail">FAIL</div>
             <dl class="cert__facts">
               <div><dt>adversarial tier</dt><dd class="t-breach">HIGH</dd></div>
               <div><dt>break rate</dt><dd>80.0% <span class="dim">(20/25)</span></dd></div>
@@ -301,12 +301,12 @@
               <div><dt>critical findings</dt><dd>12</dd></div>
             </dl>
           </div>
-          <p class="cert__note">Failed the certificate at 80% break rate under the modern 5-strategy run (crescendo 5/5, many_shot 5/5, policy_conflation 5/5, structured_output 5/5, best_of_n 0/5). The legacy 8-strategy baseline scored 0% — the attack taxonomy is what trips it, not the model tier.</p>
+          <p class="cert__note">Eval gate failed at 80% on the modern 5-strategy run (crescendo 5/5, many_shot 5/5, policy_conflation 5/5, structured_output 5/5, best_of_n 0/5). The legacy 8-strategy baseline scored 0% — the attack taxonomy is what trips it, not the model tier.</p>
         </article>
       </div>
 
       <div class="cite-table" id="cite-table" role="list" aria-label="Break categories mapped to regulatory citations"></div>
-      <p class="cite-foot">Citation counts are computed live from the <code>redteam_findings[]</code> array in the compliance report (111 entries · 111 critical). Findings span four frameworks: OWASP LLM Top 10 (35), EU AI Act (26), NIST AI RMF (25), and ISO 42001 (25). All critical entries are from adversarial red-team breaks across the evaluated models.</p>
+      <p class="cite-foot">Citation counts are residual labels from <code>redteam_findings[]</code> in the evaluation record. They are not a notified-body count. All critical entries are from adversarial red-team breaks. EU AI Act class remains the declared use case.</p>
     </section>
 
     <!-- ══ 06 INSTRUMENT AUDIT ══ -->
