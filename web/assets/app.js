@@ -428,6 +428,7 @@
       bases.forEach(function (base) {
         jobs.push({
           url: base + name,
+          name: name,
           label: labelFromName(name),
         });
       });
@@ -463,7 +464,6 @@
     if (m === "2way") return "2-way run";
     if (m === "smoke") return "smoke test";
     if (m === "deepseek") return "deepseek-v4 run";
-    if (m === "oxalpha") return "ox-alpha free run";
     if (m === "oxalpha") return "ox-alpha free run";
     if (m === "newstrats") return "modern attacks run";
     if (m === "modern") return "research-backed run";
