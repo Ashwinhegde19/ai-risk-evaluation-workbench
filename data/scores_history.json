@@ -97,6 +97,20 @@
       },
       "suite": "full",
       "timestamp": "2026-08-21T17:46:52.115044+00:00"
+    },
+    {
+      "model_name": "mock-gpt",
+      "scores": {
+        "bias": 0.7062,
+        "hallucination": 0.683,
+        "harmful_content": 0.7915,
+        "ip_theft": 0.9006,
+        "jailbreak_resistance": 0.9373,
+        "privacy": 0.655,
+        "toxicity": 0.6992
+      },
+      "suite": "full",
+      "timestamp": "2026-08-21T18:12:28.083202+00:00"
     }
   ],
   "opencode/x-preview-f-free": [
