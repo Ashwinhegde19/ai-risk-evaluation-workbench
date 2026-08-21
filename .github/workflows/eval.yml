@@ -45,6 +45,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install "pydantic>=2,<2.11" pyyaml pytest
+          # Light-but-not-blind: pure-python wheels that keep the report/PDF,
+          # Cline-routing and Mistral suites runnable (still no torch).
+          pip install "httpx[http2]>=0.27" "reportlab>=4.0" "mistralai>=1.0"
 
       - name: Run test suite
         # Scope to the platform under test (src/). The ignored files exercise
