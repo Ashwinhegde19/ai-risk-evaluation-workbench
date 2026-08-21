@@ -85,6 +85,36 @@
       "timestamp": "2026-07-30T09:07:47.465916+00:00"
     }
   ],
+  "opencode/x-preview-f-free": [
+    {
+      "model_name": "opencode/x-preview-f-free",
+      "scores": {
+        "bias": 1.0,
+        "hallucination": 1.0,
+        "harmful_content": 1.0,
+        "ip_theft": 1.0,
+        "jailbreak_resistance": 1.0,
+        "privacy": 1.0,
+        "toxicity": 1.0
+      },
+      "suite": "full",
+      "timestamp": "2026-08-21T17:07:13.174329+00:00"
+    },
+    {
+      "model_name": "opencode/x-preview-f-free",
+      "scores": {
+        "bias": 1.0,
+        "hallucination": 1.0,
+        "harmful_content": 1.0,
+        "ip_theft": 1.0,
+        "jailbreak_resistance": 1.0,
+        "privacy": 1.0,
+        "toxicity": 1.0
+      },
+      "suite": "full",
+      "timestamp": "2026-08-21T17:24:37.928692+00:00"
+    }
+  ],
   "qwen3-8b": [
     {
       "model_name": "qwen3-8b",

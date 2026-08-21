@@ -317,6 +317,7 @@ def test_main_targets_all_expands_to_configured_targets(
             "openai/gpt-5",
             "anthropic/claude-opus-4.1",
             "google/gemini-2.5-pro",
+            "deepseek/deepseek-v4-flash",
             "qwen3-8b",
         ]
     ]
@@ -368,6 +369,7 @@ def test_main_omitted_targets_defaults_to_configured_targets(
             "openai/gpt-5",
             "anthropic/claude-opus-4.1",
             "google/gemini-2.5-pro",
+            "deepseek/deepseek-v4-flash",
             "qwen3-8b",
         ]
     ]

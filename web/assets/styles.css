@@ -656,7 +656,7 @@ section, footer.methods { padding: 3.6rem 0 1.2rem; }
 
 .board__grid {
   display: grid;
-  grid-template-columns: 5fr 4fr 4fr;
+  grid-template-columns: 5fr 4fr 4fr 4fr;
   gap: clamp(1.2rem, 2.6vw, 2.2rem);
   align-items: start;
 }
@@ -816,7 +816,7 @@ section, footer.methods { padding: 3.6rem 0 1.2rem; }
   position: relative;
   display: grid;
   grid-template-columns: 128px 1fr 176px;
-  grid-template-rows: auto auto 52px auto auto;
+  grid-template-rows: auto auto auto 52px auto auto;
   row-gap: .55rem;
   padding: 1.5rem 0 .2rem;
 }
@@ -913,7 +913,7 @@ section, footer.methods { padding: 3.6rem 0 1.2rem; }
 
 /* vertical orientation (mobile) */
 .axis__plot[data-orient="v"] {
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   grid-template-rows: auto auto auto auto;
   column-gap: 1.6rem;
   padding-top: 2.2rem;
@@ -965,6 +965,7 @@ section, footer.methods { padding: 3.6rem 0 1.2rem; }
 .swatch--glm   { height: 10px; background: var(--gold-text); }
 .swatch--qwen  { height: 10px; background: var(--flag); }
 .swatch--ds    { height: 10px; background: #6E8A7E; }
+.swatch--ox    { height: 10px; background: #A99E8C; }
 
 .bf-rows { display: flex; flex-direction: column; gap: .6rem; }
 .bf-row {
@@ -1492,7 +1493,7 @@ section, footer.methods { padding: 3.6rem 0 1.2rem; }
 
 /* ── 05 tribunal ── */
 
-.cert-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 1.3rem; margin-bottom: 1.7rem; }
+.cert-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 1.3rem; margin-bottom: 1.7rem; }
 .cert {
   background: var(--canvas-2);
   border: 1px solid var(--rule);

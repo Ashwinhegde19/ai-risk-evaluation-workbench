@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from src.backends.base import ClineBackend, get_backend
+from src.backends.base import ClineBackend, OpenAIBackend, get_backend
 
 
 class BackendRoutingTest(unittest.TestCase):
@@ -110,6 +110,57 @@ class BackendRoutingTest(unittest.TestCase):
             backend = get_backend("cline/some-model")
             self.assertIsNotNone(backend)
             self.assertEqual(backend.model_name, "cline/some-model")
+
+    def test_opencode_model_routes_to_zen_and_strips_namespace(self):
+        """opencode/x-preview-f-free strips the namespace for the Zen gateway."""
+        with patch.dict(
+            os.environ,
+            {"MOCK": "0", "OPENCODE_API_KEY": "test-key"},
+            clear=False,
+        ):
+            env = os.environ.copy()
+            env.pop("OPENCODE_BASE_URL", None)
+            with patch.dict(os.environ, env, clear=True):
+                backend = get_backend("opencode/x-preview-f-free")
+                self.assertIsInstance(backend, OpenAIBackend)
+                # The Zen gateway rejects namespaced ids: slug must be bare.
+                self.assertEqual(backend.model_name, "x-preview-f-free")
+                self.assertEqual(
+                    backend.base_url, "https://opencode.ai/zen/v1"
+                )
+                self.assertEqual(backend.api_key, "test-key")
+
+    def test_opencode_model_custom_base_url_override(self):
+        """OPENCODE_BASE_URL overrides the default Zen gateway URL."""
+        with patch.dict(
+            os.environ,
+            {
+                "MOCK": "0",
+                "OPENCODE_API_KEY": "test-key",
+                "OPENCODE_BASE_URL": "https://zen.example.com/v1",
+            },
+            clear=False,
+        ):
+            backend = get_backend("opencode/x-preview-f-free")
+            self.assertEqual(backend.base_url, "https://zen.example.com/v1")
+            self.assertEqual(backend.model_name, "x-preview-f-free")
+
+    def test_opencode_model_missing_api_key_raises(self):
+        """If OPENCODE_API_KEY is unset and MOCK != 1, raise ValueError."""
+        with patch.dict(os.environ, {"MOCK": "0"}, clear=False):
+            env = os.environ.copy()
+            env.pop("OPENCODE_API_KEY", None)
+            with patch.dict(os.environ, env, clear=True):
+                with self.assertRaises(ValueError) as ctx:
+                    get_backend("opencode/x-preview-f-free")
+                self.assertIn("OPENCODE_API_KEY", str(ctx.exception))
+
+    def test_opencode_model_mock_mode(self):
+        """In mock mode, OpenCode slugs return a mock backend without a key."""
+        with patch.dict(os.environ, {"MOCK": "1"}, clear=True):
+            backend = get_backend("opencode/x-preview-f-free")
+            self.assertIsNotNone(backend)
+            self.assertEqual(backend.model_name, "x-preview-f-free")
 
 
 if __name__ == "__main__":

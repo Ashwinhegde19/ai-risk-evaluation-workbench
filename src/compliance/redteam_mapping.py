@@ -579,24 +579,29 @@ def attack_trees_to_findings(
 ) -> List[dict]:
     """Convert a list of :class:`~src.core.models.AttackTree` into finding rows.
 
-    Each successful attack tree becomes one red-team finding row of the form
+    Every attack tree becomes one red-team finding row of the form
     ``{target, strategy, broke, turn, final_score, transcript,
     breaking_response}``, ready to feed :func:`map_redteam_findings`. The
     ``strategy`` is the first strategy in the tree's ``strategy_chain`` (the
     vector that opened the attack); ``turn`` is the last turn number and
     ``breaking_response`` is that turn's complete model response.
 
+    Failed trees are emitted with ``broke=False`` so downstream consumers can
+    compute a true break rate (breaks / total attacks). In particular
+    ``ComplianceReportGenerator._break_rates`` needs that denominator: emitting
+    successes only would rate any single break as a 100% break rate and falsely
+    escalate severity to critical (failing the certificate).
+
     Args:
         model_name: The target model slug (used as ``target``).
         attack_trees: The attack trees produced by the red-team agent.
 
     Returns:
-        A list of red-team finding rows (one per successful attack).
+        A list of red-team finding rows (one per attack, successful or not).
     """
     rows: List[dict] = []
     for tree in attack_trees:
-        if not getattr(tree, "success", False):
-            continue
+        broke = bool(getattr(tree, "success", False))
         chain = getattr(tree, "strategy_chain", []) or ["unknown"]
         turns = getattr(tree, "turns", [])
         last_turn = turns[-1] if turns else None
@@ -615,7 +620,7 @@ def attack_trees_to_findings(
             {
                 "target": model_name,
                 "strategy": chain[0],
-                "broke": True,
+                "broke": broke,
                 "turn": getattr(last_turn, "turn_number", None) if last_turn else None,
                 "final_score": round(float(getattr(tree, "final_score", 0.0)), 4),
                 "transcript": transcript,

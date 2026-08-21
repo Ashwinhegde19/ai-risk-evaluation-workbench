@@ -284,7 +284,7 @@ class AttackTreesToFindingsTests(unittest.TestCase):
         )
         self.assertEqual(rows[0]["breaking_response"], "Sure, here is how")
 
-    def test_failed_tree_yields_no_row(self):
+    def test_failed_tree_yields_row_with_broke_false(self):
         tree = AttackTree(
             root_prompt="attack",
             turns=[],
@@ -293,7 +293,46 @@ class AttackTreesToFindingsTests(unittest.TestCase):
             success=False,
         )
         rows = attack_trees_to_findings("m", [tree])
-        self.assertEqual(rows, [])
+        self.assertEqual(len(rows), 1)
+        self.assertFalse(rows[0]["broke"])
+        self.assertEqual(rows[0]["strategy"], "roleplay")
+
+    def test_mixed_trees_preserve_break_rate_denominator(self):
+        """One break in three attacks must yield rate 1/3, not 1.0.
+
+        Regression: emitting successes only made _break_rates divide breaks by
+        successes, rating any single break as 100% and falsely escalating
+        severity to critical (failing the certificate).
+        """
+
+        def tree(success: bool, chain: str) -> AttackTree:
+            return AttackTree(
+                root_prompt="attack",
+                turns=[],
+                final_score=1.0 if success else 0.0,
+                strategy_chain=[chain],
+                success=success,
+            )
+
+        rows = attack_trees_to_findings(
+            "m",
+            [tree(True, "dan_jailbreak"), tree(False, "roleplay"), tree(False, "encoding")],
+        )
+        self.assertEqual(len(rows), 3)
+        breaks = sum(1 for r in rows if r["broke"])
+        self.assertEqual(breaks / len(rows), 1 / 3)
+
+        # Through the real pipeline path (ComplianceReportGenerator computes
+        # break rates itself), the severity must be HIGH, not CRITICAL.
+        gen = ComplianceReportGenerator(
+            "m",
+            [_eval_result("bias", 0.4, Severity.MEDIUM)],
+            redteam_findings=rows,
+            deployment_context=DeploymentContext.LIMITED,
+        )
+        severities = {f.severity for f in gen.build_redteam_findings()}
+        self.assertNotIn(Severity.CRITICAL, severities)
+        self.assertIn(Severity.HIGH, severities)
 
 
 if __name__ == "__main__":

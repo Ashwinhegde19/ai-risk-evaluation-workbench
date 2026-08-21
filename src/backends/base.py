@@ -35,6 +35,14 @@ MISTRAL_MODEL_PREFIX = "mistral-shieldstral"
 # Prefix identifying Mistral API models (e.g. ``mistral-small``, ``mistral-large``).
 MISTRAL_API_PREFIX = "mistral/"
 
+# Prefix identifying OpenCode Zen-routed models (e.g. ``opencode/x-preview-f-free``).
+# The namespace is stripped before the API call: the Zen gateway expects the bare
+# model slug (``x-preview-f-free``) and rejects namespaced ids.
+OPENCODE_MODEL_PREFIX = "opencode/"
+
+# Default OpenCode Zen gateway base URL (OpenAI-compatible /chat/completions).
+OPENCODE_DEFAULT_BASE_URL = "https://opencode.ai/zen/v1"
+
 
 class ModelBackend(ABC):
     """Abstract base class for all model backends.
@@ -1096,6 +1104,50 @@ def _resolve_open_model(model_name: str) -> ModelBackend:
     return OpenAIBackend(model_name=model_name, api_key=api_key, base_url=base_url)
 
 
+def _is_opencode_model(model_name: str) -> bool:
+    """Return whether a slug is an OpenCode Zen-routed model.
+
+    Args:
+        model_name: The model slug.
+
+    Returns:
+        ``True`` when the slug starts with the OpenCode prefix.
+    """
+    return model_name.lower().startswith(OPENCODE_MODEL_PREFIX)
+
+
+def _resolve_opencode_model(model_name: str) -> ModelBackend:
+    """Build a backend for an OpenCode Zen-routed model.
+
+    The ``opencode/`` namespace is stripped: the Zen gateway expects the bare
+    model slug (e.g. ``x-preview-f-free``) and rejects namespaced ids.
+
+    Args:
+        model_name: The OpenCode slug (e.g. ``opencode/x-preview-f-free``).
+
+    Returns:
+        An :class:`OpenAIBackend` pointed at the OpenCode Zen gateway.
+
+    Raises:
+        ValueError: If ``OPENCODE_API_KEY`` is unset and mock mode is off.
+    """
+    stripped = model_name[len(OPENCODE_MODEL_PREFIX):]
+    base_url = os.getenv("OPENCODE_BASE_URL", OPENCODE_DEFAULT_BASE_URL).rstrip("/")
+    print(
+        f"[backend] target={model_name} base_url={base_url} "
+        f"mock={'on' if _is_mock_enabled() else 'off'}"
+    )
+    if _is_mock_enabled():
+        return OpenAIBackend(model_name=stripped, api_key="mock", base_url="http://mock.local/v1")
+    api_key = os.getenv("OPENCODE_API_KEY")
+    if not api_key:
+        raise ValueError(
+            f"Cannot route OpenCode model '{model_name}': OPENCODE_API_KEY is "
+            "not set. Export OPENCODE_API_KEY (or set MOCK=1 for offline runs)."
+        )
+    return OpenAIBackend(model_name=stripped, api_key=api_key, base_url=base_url)
+
+
 def _resolve_frontier_model(model_name: str) -> ModelBackend:
     """Build a backend for a namespaced frontier model via the Kilo gateway.
 
@@ -1163,6 +1215,8 @@ def get_backend(
         return _resolve_mistral_api_model(model_name)
     if _is_cline_model(model_name):
         return _resolve_cline_model(model_name)
+    if _is_opencode_model(model_name):
+        return _resolve_opencode_model(model_name)
     if _is_frontier_slug(model_name):
         return _resolve_frontier_model(model_name)
 

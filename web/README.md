@@ -1,7 +1,7 @@
 # VERDICT — evidence console
 
 Static front-end for the AI-safety evaluation platform: a forensic red-team
-dossier over the seed-42 canonical run (8 strategies × 5 seeded trials,
+dossier over the seed-42 canonical run (15 strategies × 5 seeded trials,
 LLM-adjudicated breaks with 95% Wilson confidence intervals).
 
 ## Run it
@@ -21,7 +21,7 @@ inlined seed-42 dataset (the exact numbers in `results/`) whenever
 The page loads, via `fetch()`:
 
 - `results/redteam_findings.json` — per-model / per-strategy break rates,
-  Wilson CIs, and all 80 case files with full transcripts
+  Wilson CIs, and all 300 case files with full transcripts
 - `results/compliance_report_model.json` — risk tiers, certificates, and
   the 79 framework citations (EU AI Act / NIST AI RMF / ISO 42001)
 
