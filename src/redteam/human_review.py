@@ -14,6 +14,13 @@ CLI::
         --out data/human_review/adjudication_sheet.csv \\
         --n 50 --seed 42
 
+    # Per-model adjudication: one target, matched break/hold rows.
+    python -m src.redteam.human_review export \\
+        --findings results/redteam_findings.json \\
+        --out data/human_review/adjudication_sheet_spacebunny.csv \\
+        --target opencode/space-bunny-free \\
+        --balance-verdicts --n 22 --seed 42
+
     python -m src.redteam.human_review score \\
         --sheet data/human_review/adjudication_sheet.csv \\
         --out results/human_agreement.json
@@ -29,7 +36,7 @@ import random
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from pydantic import Field
 
@@ -236,10 +243,43 @@ def last_turn_text(finding: Dict[str, Any]) -> tuple[str, str]:
     return prompt, str(response or "")
 
 
+def filter_target(
+    findings: Sequence[Dict[str, Any]],
+    target: str,
+) -> List[Dict[str, Any]]:
+    """Restrict findings to a single target model.
+
+    Args:
+        findings: Full finding list.
+        target: Exact ``target`` string, e.g. ``opencode/space-bunny-free``.
+
+    Returns:
+        The findings whose ``target`` equals ``target``.
+
+    Raises:
+        ValueError: If no finding matches ``target``.
+    """
+    subset = [f for f in findings if str(f.get("target", "")) == target]
+    if not subset:
+        available = sorted({str(f.get("target", "")) for f in findings})
+        raise ValueError(
+            f"No findings for target '{target}'. "
+            f"Available targets: {', '.join(available) or 'none'}."
+        )
+    return subset
+
+
+def _strategy_of(finding: Dict[str, Any]) -> str:
+    """Return a finding's strategy name, used as a sampling bucket key."""
+    return str(finding.get("strategy", ""))
+
+
 def sample_findings(
     findings: Sequence[Dict[str, Any]],
     n: int = 50,
     seed: int = 42,
+    *,
+    balance_verdicts: bool = False,
 ) -> List[Dict[str, Any]]:
     """Draw a stratified sample for human review.
 
@@ -251,6 +291,13 @@ def sample_findings(
         findings: Full finding list.
         n: Target sample size.
         seed: RNG seed.
+        balance_verdicts: Draw a *matched* sheet instead: half the slots
+            (rounded down) go to break rows and the rest to hold rows, and
+            hold rows are matched per strategy to how many break rows that
+            strategy produced. Use it for single-model adjudication, where
+            breaks are rare and a break-only sheet cannot expose the
+            judge's false positives (flagged refusals) or false negatives
+            (missed compliance).
 
     Returns:
         Up to ``n`` findings, sorted by ``case_id``.
@@ -263,7 +310,13 @@ def sample_findings(
 
     selected: List[Dict[str, Any]] = list(review)
     remaining = n - len(selected)
-    if remaining > 0 and rest:
+    if balance_verdicts:
+        if remaining > 0:
+            selected.extend(_matched_verdict_sample(rest, remaining, rng))
+        else:
+            rng.shuffle(selected)
+            selected = selected[:n]
+    elif remaining > 0 and rest:
         selected.extend(_round_robin_buckets(rest, remaining, rng))
     elif remaining < 0:
         rng.shuffle(selected)
@@ -273,27 +326,121 @@ def sample_findings(
     return selected
 
 
+def _matched_verdict_sample(
+    pool: Sequence[Dict[str, Any]],
+    n: int,
+    rng: random.Random,
+) -> List[Dict[str, Any]]:
+    """Pick ``n`` findings with roughly equal numbers of breaks and holds.
+
+    Args:
+        pool: Candidate findings (needs-review rows already removed).
+        n: Number of slots to fill.
+        rng: Seeded RNG for reproducible sampling.
+
+    Returns:
+        Up to ``n`` findings; at most half are break rows when the pool
+        holds enough of each verdict.
+    """
+    if n <= 0 or not pool:
+        return []
+    breaks = [f for f in pool if f.get("broke")]
+    holds = [f for f in pool if not f.get("broke")]
+    n_break = min(n // 2, len(breaks))
+    n_hold = min(n - n_break, len(holds))
+    picked: List[Dict[str, Any]] = []
+    if n_break:
+        picked.extend(_round_robin_buckets(breaks, n_break, rng, key=_strategy_of))
+    if n_hold:
+        picked.extend(_match_holds_to_breaks(breaks, holds, n_hold, rng))
+    return picked
+
+
+def _match_holds_to_breaks(
+    breaks: Sequence[Dict[str, Any]],
+    holds: Sequence[Dict[str, Any]],
+    n: int,
+    rng: random.Random,
+) -> List[Dict[str, Any]]:
+    """Pick ``n`` hold rows, matched per strategy to the break rows.
+
+    A reviewer needs hold rows on the same strategies that broke the
+    model; without them, missed compliance (judge REFUSED, human COMPLIED)
+    on those strategies stays invisible. Strategies are served in
+    descending order of how many break rows they produced, and leftover
+    slots are spread round-robin over the remaining strategies.
+
+    Args:
+        breaks: Break rows in the pool (counted for strategy coverage).
+        holds: Candidate hold rows.
+        n: Number of hold rows wanted.
+        rng: Seeded RNG for reproducible sampling.
+
+    Returns:
+        Up to ``n`` hold rows.
+    """
+    if n <= 0 or not holds:
+        return []
+    by_strategy: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for finding in holds:
+        by_strategy[_strategy_of(finding)].append(finding)
+    for rows in by_strategy.values():
+        rng.shuffle(rows)
+
+    break_counts: Dict[str, int] = defaultdict(int)
+    for finding in breaks:
+        break_counts[_strategy_of(finding)] += 1
+    order = sorted(by_strategy, key=lambda s: (-break_counts.get(s, 0), s))
+
+    picked: List[Dict[str, Any]] = []
+    for strategy in order:
+        want = min(break_counts.get(strategy, 0), len(by_strategy[strategy]))
+        for _ in range(want):
+            if len(picked) >= n:
+                return picked
+            picked.append(by_strategy[strategy].pop())
+    rest = [f for strategy in order for f in by_strategy[strategy]]
+    if len(picked) < n and rest:
+        picked.extend(_round_robin_buckets(rest, n - len(picked), rng, key=_strategy_of))
+    return picked
+
+
 def _round_robin_buckets(
     items: Sequence[Dict[str, Any]],
     n: int,
     rng: random.Random,
+    key: Optional[Callable[[Dict[str, Any]], Tuple[Any, ...]]] = None,
 ) -> List[Dict[str, Any]]:
-    """Sample ``n`` items, cycling through ``(target, broke)`` buckets."""
-    buckets: Dict[tuple[str, bool], List[Dict[str, Any]]] = defaultdict(list)
+    """Sample ``n`` items, cycling through per-strategy or per-target buckets.
+
+    Args:
+        items: Candidate findings.
+        n: Number of items wanted.
+        rng: Seeded RNG used to shuffle bucket order and bucket contents.
+        key: Optional bucket-key function. Defaults to ``(target, broke)``.
+
+    Returns:
+        Up to ``n`` items, cycling across buckets so no bucket dominates.
+    """
+    buckets: Dict[Tuple[Any, ...], List[Dict[str, Any]]] = defaultdict(list)
     for item in items:
-        key = (str(item.get("target", "")), bool(item.get("broke")))
-        buckets[key].append(item)
+        bucket = (
+            key(item)
+            if key is not None
+            else (str(item.get("target", "")), bool(item.get("broke")))
+        )
+        buckets[bucket].append(item)
     keys = list(buckets)
     rng.shuffle(keys)
-    for key in keys:
-        rng.shuffle(buckets[key])
+    for bucket in keys:
+        rng.shuffle(buckets[bucket])
     picked: List[Dict[str, Any]] = []
     while len(picked) < n and any(buckets[k] for k in keys):
-        for key in keys:
+        for bucket in keys:
             if len(picked) >= n:
                 break
-            if buckets[key]:
-                picked.append(buckets[key].pop())
+            if buckets[bucket]:
+                picked.append(buckets[bucket].pop())
     return picked
 
 
@@ -483,6 +630,8 @@ def export_sheet(
     out_path: str | Path,
     n: int = 50,
     seed: int = 42,
+    target: Optional[str] = None,
+    balance_verdicts: bool = False,
 ) -> Path:
     """Sample findings and write the human-review CSV.
 
@@ -491,14 +640,30 @@ def export_sheet(
         out_path: Destination CSV.
         n: Sample size.
         seed: Sample seed.
+        target: Restrict the sample to this target model (exact match on
+            the finding's ``target``). ``None`` keeps the all-models
+            behaviour.
+        balance_verdicts: Draw a matched break/hold sample instead of the
+            all-models round-robin. See :func:`sample_findings`.
 
     Returns:
         The written CSV path.
+
+    Raises:
+        ValueError: If the findings file is empty, or ``target`` matches
+            no finding.
     """
     findings = load_findings(findings_path)
     if not findings:
         raise ValueError(f"{findings_path} contains no findings.")
-    sample = sample_findings(findings, n=n, seed=seed)
+    if target is not None:
+        findings = filter_target(findings, target)
+    sample = sample_findings(
+        findings,
+        n=n,
+        seed=seed,
+        balance_verdicts=balance_verdicts,
+    )
     return write_sheet(sample, out_path)
 
 
@@ -574,6 +739,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     export_p.add_argument("--n", type=int, default=50, help="Sample size (default: 50).")
     export_p.add_argument("--seed", type=int, default=42, help="Sample seed (default: 42).")
+    export_p.add_argument(
+        "--target",
+        default=None,
+        help=(
+            "Restrict the sample to one target model, e.g. "
+            "opencode/space-bunny-free (default: all models)."
+        ),
+    )
+    export_p.add_argument(
+        "--balance-verdicts",
+        action="store_true",
+        help=(
+            "Draw a matched sheet: roughly equal break and hold rows, with "
+            "hold rows matched per strategy to the strategies that produced "
+            "the breaks. Use with --target for single-model adjudication."
+        ),
+    )
 
     score_p = sub.add_parser("score", help="Score a labelled sheet.")
     score_p.add_argument(
@@ -601,8 +783,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
         if args.command == "export":
-            path = export_sheet(args.findings, args.out, n=args.n, seed=args.seed)
+            path = export_sheet(
+                args.findings,
+                args.out,
+                n=args.n,
+                seed=args.seed,
+                target=args.target,
+                balance_verdicts=args.balance_verdicts,
+            )
             print(f"Wrote {path}")
+            print(
+                f"target:      {args.target or 'all models'}"
+                f"{'  (matched break/hold sample)' if args.balance_verdicts else ''}"
+            )
             print()
             print("Label rule:")
             print(LABEL_RULE)

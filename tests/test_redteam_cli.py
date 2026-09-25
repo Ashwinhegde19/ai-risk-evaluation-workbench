@@ -77,6 +77,8 @@ class ResolveStrategiesTests(unittest.TestCase):
 class ResolveTargetsTests(unittest.TestCase):
     def test_all_expands_to_configured_models(self):
         targets = _resolve_cli_targets("all", None)
+        # Full ordered config.yaml roster. The two OpenCode Zen free-tier
+        # targets are included so --targets all covers all five board models.
         self.assertEqual(
             targets,
             [
@@ -84,6 +86,8 @@ class ResolveTargetsTests(unittest.TestCase):
                 "anthropic/claude-opus-4.1",
                 "google/gemini-2.5-pro",
                 "deepseek/deepseek-v4-flash",
+                "opencode/x-preview-f-free",
+                "opencode/space-bunny-free",
                 "qwen3-8b",
             ],
         )

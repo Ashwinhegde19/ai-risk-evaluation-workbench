@@ -312,12 +312,16 @@ def test_main_targets_all_expands_to_configured_targets(
     exit_code = main(["--targets", "all", "--mock", "--report-dir", str(tmp_path)])
 
     assert exit_code == 0
+    # Full ordered roster from config.yaml, including the two OpenCode Zen
+    # free-tier targets (P7: --targets all must cover all five board models).
     assert captured_targets == [
         [
             "openai/gpt-5",
             "anthropic/claude-opus-4.1",
             "google/gemini-2.5-pro",
             "deepseek/deepseek-v4-flash",
+            "opencode/x-preview-f-free",
+            "opencode/space-bunny-free",
             "qwen3-8b",
         ]
     ]
@@ -364,12 +368,15 @@ def test_main_omitted_targets_defaults_to_configured_targets(
     exit_code = main(["--mock", "--report-dir", str(tmp_path)])
 
     assert exit_code == 0
+    # Same full ordered roster as config.yaml (see the "all" expansion test).
     assert captured_targets == [
         [
             "openai/gpt-5",
             "anthropic/claude-opus-4.1",
             "google/gemini-2.5-pro",
             "deepseek/deepseek-v4-flash",
+            "opencode/x-preview-f-free",
+            "opencode/space-bunny-free",
             "qwen3-8b",
         ]
     ]
