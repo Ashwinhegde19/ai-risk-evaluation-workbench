@@ -51,29 +51,39 @@ function diskJson(p) {
   const check = (name, cond, detail) => results.push([cond ? 'PASS' : 'FAIL', name, detail || '']);
 
   check('live data loaded', /live/.test(t('#source-badge')), t('#source-badge'));
-  check('hero caption updated', /Three models held/.test(t('#run-banner-h')), t('#run-banner-h').replace(/\s+/g,' ').slice(0, 70));
+  check('hero caption updated', /Four models held/.test(t('#run-banner-h')), t('#run-banner-h').replace(/\s+/g,' ').slice(0, 70));
   check('ox plate pct=13.3', t('#ox-pct') === '13.3', `got "${t('#ox-pct')}"`);
   check('ox meta filled', t('#ox-meta').length > 0, t('#ox-meta').slice(0,60));
   check('ox ci shows wilson', /7\.4/.test(t('#ox-ci')), t('#ox-ci'));
+  check('space-bunny plate pct=14.7', t('#sb-pct') === '14.7', `got "${t('#sb-pct')}"`);
+  check('space-bunny meta filled', t('#sb-meta').length > 0, t('#sb-meta').slice(0,60));
+  check('space-bunny ci shows wilson', /8\.39/.test(t('#sb-ci')), t('#sb-ci'));
   check('axis-ox populated', ($('#axis-ox') || {children:[]}).children.length > 0, `children=${(($('#axis-ox')||{children:[]}).children||[]).length}`);
   check('axis-ox-ci label', /7\.41/.test(t('#axis-ox-ci')), t('#axis-ox-ci'));
-  check('gap-note names ox-alpha', /Ox Alpha Free/.test(t('#gap-note')), t('#gap-note').replace(/<[^>]+>/g,'').slice(0, 110));
-  check('boot log targets=4', /targets=4/.test(t('#boot-log')), (t('#boot-log').match(/targets=\d+[^"]*?\)/)||[''])[0].slice(0,90));
-  check('boot log findings=300', /300 case files/.test(t('#boot-log')), '');
+  check('axis-sb populated', ($('#axis-sb') || {children:[]}).children.length > 0, `children=${(($('#axis-sb')||{children:[]}).children||[]).length}`);
+  check('axis-sb-ci label', /8\.39/.test(t('#axis-sb-ci')), t('#axis-sb-ci'));
+  check('gap-note names space-bunny', /space-bunny/.test(t('#gap-note')), t('#gap-note').replace(/<[^>]+>/g,'').slice(0, 110));
+  // Break rates are fractions; pct() scales by 100. Catch a double-scaled note.
+  check('gap-note rates are sane', !/\d{3,}\.\d%/.test(t('#gap-note')), t('#gap-note').replace(/<[^>]+>/g,'').slice(0, 110));
+  check('boot log targets=5', /targets=5/.test(t('#boot-log')), (t('#boot-log').match(/targets=\d+[^"]*?\)/)||[''])[0].slice(0,90));
+  check('boot log findings=375', /375 case files/.test(t('#boot-log')), '');
   check('ticker >= 4 verdicts', ($('#ticker-track')||{children:[]}).children.length >= 4, `children=${(($('#ticker-track')||{children:[]}).children||[]).length}`);
   const rows = $$('.bf-row');
   let bfOk = rows.length === 15;
   rows.forEach((r) => {
     const n = r.querySelectorAll('.bf-row__tracks').length;
-    if (n !== 0 && n !== 4) bfOk = false;
+    if (n !== 0 && n !== 5) bfOk = false;
   });
-  check('battlefield: 15 rows x 4 tracks', bfOk, `rows=${rows.length}, first-row tracks=${rows[0] ? rows[0].querySelectorAll('.bf-row__tracks').length : 0}`);
+  check('battlefield: 15 rows x 5 tracks', bfOk, `rows=${rows.length}, first-row tracks=${rows[0] ? rows[0].querySelectorAll('.bf-row__tracks').length : 0}`);
   check('bar chart rendered', $('#chart-bar-wrap').innerHTML.length > 500, `len=${$('#chart-bar-wrap').innerHTML.length}`);
   check('heatmap includes ox column', $$('#chart-heat-wrap text').some(x=>/ox/i.test(x.textContent)), $$('#chart-heat-wrap text').map(x=>x.textContent).join('|').slice(0,80));
+  check('heatmap includes space-bunny column', $$('#chart-heat-wrap text').some(x=>/space-bunny/i.test(x.textContent)), $$('#chart-heat-wrap text').map(x=>x.textContent).join('|').slice(0,80));
   check('vault filter has ox option', !!$('option[value="opencode/x-preview-f-free"]'), '');
+  check('vault filter has space-bunny option', !!$('option[value="opencode/space-bunny-free"]'), '');
   check('vault count rendered', /\d/.test(t('#vault-count')), t('#vault-count'));
   check('cite table populated', $('#cite-table').children.length > 0, `rows=${$('#cite-table').children.length}`);
   check('evolution chips include ox-alpha', /opencode\/x-preview-f-free/.test(t('#evolution-chips')) && /deepseek/.test(t('#evolution-chips')), [...doc.querySelectorAll('#evolution-chips button')].map(b=>b.textContent).join('|'));
+  check('evolution chips include space-bunny', /opencode\/space-bunny-free/.test(t('#evolution-chips')), [...doc.querySelectorAll('#evolution-chips button')].map(b=>b.textContent).join('|'));
   check('evolution compare filled', $('#evolution-compare-body').children.length > 0, `trs=${$('#evolution-compare-body').children.length}`);
   check('audit nodes >= 4', $$('.audit-node').length >= 4, `n=${$$('.audit-node').length}`);
 

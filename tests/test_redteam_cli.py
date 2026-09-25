@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
@@ -10,6 +11,7 @@ from unittest.mock import patch
 from src.backends.base import ModelBackend
 from src.redteam.agent import (
     _build_arg_parser,
+    _enforce_no_silent_mock,
     _resolve_cli_targets,
     build_summary,
     main,
@@ -265,6 +267,29 @@ class RunRedteamCliTests(unittest.TestCase):
         out = buf.getvalue()
         self.assertIn("[redteam] target=qwen3-8b strategy=dan_jailbreak trial=1/1 turn=1/3", out)
         self.assertIn("[redteam] target=qwen3-8b strategy=dan_jailbreak trial=1/1 -> BREAK", out)
+
+
+class NoSilentMockPreflightTests(unittest.TestCase):
+    """The no-silent-mock preflight must not demand a Kilo base URL for
+    self-routed lanes such as ``opencode/`` that resolve their own endpoint."""
+
+    def test_opencode_slug_does_not_require_kilo_base_url(self):
+        """opencode/space-bunny-free passes with only OPENCODE_* configured."""
+        env = {"MOCK": "0", "OPENCODE_API_KEY": "k"}
+        with patch.dict(os.environ, env, clear=True):
+            _enforce_no_silent_mock(["opencode/space-bunny-free"])
+
+    def test_frontier_slug_still_requires_kilo_base_url(self):
+        """A genuine Kilo-routed slug with no base URL still fails loud."""
+        with patch.dict(os.environ, {"MOCK": "0"}, clear=True):
+            with self.assertRaises(ValueError) as ctx:
+                _enforce_no_silent_mock(["openai/gpt-5"])
+            self.assertIn("KILO_BASE_URL", str(ctx.exception))
+
+    def test_mock_mode_skips_all_checks(self):
+        """MOCK=1 short-circuits every preflight branch."""
+        with patch.dict(os.environ, {"MOCK": "1"}, clear=True):
+            _enforce_no_silent_mock(["openai/gpt-5", "qwen3-8b"])
 
 
 class BuildSummaryTests(unittest.TestCase):

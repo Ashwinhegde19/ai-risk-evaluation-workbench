@@ -162,6 +162,42 @@ class BackendRoutingTest(unittest.TestCase):
             self.assertIsNotNone(backend)
             self.assertEqual(backend.model_name, "x-preview-f-free")
 
+    def test_space_bunny_routes_to_zen_and_strips_namespace(self):
+        """opencode/space-bunny-free strips the namespace for the Zen gateway."""
+        with patch.dict(
+            os.environ,
+            {"MOCK": "0", "OPENCODE_API_KEY": "test-key"},
+            clear=False,
+        ):
+            env = os.environ.copy()
+            env.pop("OPENCODE_BASE_URL", None)
+            with patch.dict(os.environ, env, clear=True):
+                backend = get_backend("opencode/space-bunny-free")
+                self.assertIsInstance(backend, OpenAIBackend)
+                # The Zen gateway rejects namespaced ids: slug must be bare.
+                self.assertEqual(backend.model_name, "space-bunny-free")
+                self.assertEqual(
+                    backend.base_url, "https://opencode.ai/zen/v1"
+                )
+                self.assertEqual(backend.api_key, "test-key")
+
+    def test_space_bunny_mock_mode(self):
+        """In mock mode, the Space Bunny slug resolves without a key."""
+        with patch.dict(os.environ, {"MOCK": "1"}, clear=True):
+            backend = get_backend("opencode/space-bunny-free")
+            self.assertIsNotNone(backend)
+            self.assertEqual(backend.model_name, "space-bunny-free")
+
+    def test_space_bunny_missing_api_key_raises(self):
+        """Space Bunny without OPENCODE_API_KEY raises rather than mocking."""
+        with patch.dict(os.environ, {"MOCK": "0"}, clear=False):
+            env = os.environ.copy()
+            env.pop("OPENCODE_API_KEY", None)
+            with patch.dict(os.environ, env, clear=True):
+                with self.assertRaises(ValueError) as ctx:
+                    get_backend("opencode/space-bunny-free")
+                self.assertIn("OPENCODE_API_KEY", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

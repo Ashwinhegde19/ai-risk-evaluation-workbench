@@ -28,7 +28,12 @@ from typing import Callable, List, Optional
 
 from pydantic import Field
 
-from src.backends.base import ModelBackend
+from src.backends.base import (
+    CLINE_MODEL_PREFIXES,
+    MISTRAL_API_PREFIX,
+    OPENCODE_MODEL_PREFIX,
+    ModelBackend,
+)
 from src.core.models import AttackTree, AttackTurn, BaseWorkbenchModel
 from src.redteam.strategies.base import (
     AttackStrategy,
@@ -820,12 +825,37 @@ def run_redteam_cli(
     return summary
 
 
+def _is_self_routed_slug(lowered_slug: str) -> bool:
+    """Return whether a lowercased slug routes to a lane with its own base URL.
+
+    These lanes resolve their endpoint from their own environment variable (or a
+    built-in default) instead of the shared Kilo gateway, so the no-silent-mock
+    Kilo check does not apply to them.
+
+    Args:
+        lowered_slug: A model slug already lowercased by the caller.
+
+    Returns:
+        ``True`` when the slug is namespaced for a self-routed lane.
+    """
+    if lowered_slug.startswith(OPENCODE_MODEL_PREFIX):
+        return True
+    if lowered_slug.startswith(MISTRAL_API_PREFIX):
+        return True
+    return any(lowered_slug.startswith(prefix) for prefix in CLINE_MODEL_PREFIXES)
+
+
 def _enforce_no_silent_mock(targets: List[str]) -> None:
     """Fail loud when a target has no resolvable base_url in real (non-mock) mode.
 
     Mirrors the pipeline's no-silent-mock rule: unless ``MOCK=1``, a target whose
     backend cannot resolve a base URL (e.g. an unset ``OPEN_MODEL_BASE_URL`` for
     ``qwen3-8b``) raises rather than silently routing to a dead endpoint.
+
+    The Kilo gateway check applies only to slugs that actually route through
+    Kilo. Namespaced slugs on self-routed lanes (``opencode/``, ``cline/``,
+    ``mistral/``) carry their own namespace and resolve their own base URL, so
+    requiring ``KILO_BASE_URL`` for them would be a false coupling.
 
     Args:
         targets: The model slugs about to be attacked.
@@ -845,6 +875,8 @@ def _enforce_no_silent_mock(targets: List[str]) -> None:
                 "Deploy the Modal endpoint and set OPEN_MODEL_BASE_URL, or set "
                 "MOCK=1 for an offline run."
             )
+        if _is_self_routed_slug(lowered):
+            continue
         if "/" in lowered and not (
             os.getenv("KILO_BASE_URL") or os.getenv("OPENAI_BASE_URL")
         ):

@@ -1184,9 +1184,16 @@ def get_backend(
     Routing is decided by the model slug:
 
     * ``qwen3-8b*`` (open-source) -> Modal L4 endpoint via ``OPEN_MODEL_BASE_URL``.
+    * ``opencode/*`` -> OpenCode Zen gateway via ``OPENCODE_BASE_URL``. The
+      namespace is stripped before the call (Zen expects the bare slug).
+    * ``cline/*`` -> the Cline gateway (HTTP/2 envelope, ``CLINE_API_KEY``).
     * ``provider/model`` (frontier, e.g. ``openai/gpt-5``) -> Kilo gateway via
       ``KILO_BASE_URL`` (falling back to ``OPENAI_BASE_URL``).
     * Otherwise -> the configured provider, or a provider inferred from the name.
+
+    The opencode check runs *before* the frontier check on purpose: every
+    ``opencode/`` slug also contains a ``/``, so reversing the order would send
+    Zen targets to the Kilo gateway.
 
     The model's API key is resolved from the environment via the configured
     environment variable name; it is never passed as a literal value. When a
@@ -1273,4 +1280,6 @@ __all__ = [
     "CLINE_MODEL_PREFIXES",
     "MISTRAL_MODEL_PREFIX",
     "MISTRAL_API_PREFIX",
+    "OPENCODE_MODEL_PREFIX",
+    "OPENCODE_DEFAULT_BASE_URL",
 ]

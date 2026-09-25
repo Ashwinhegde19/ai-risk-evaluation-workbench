@@ -113,6 +113,22 @@
       "timestamp": "2026-08-21T18:12:28.083202+00:00"
     }
   ],
+  "opencode/space-bunny-free": [
+    {
+      "model_name": "opencode/space-bunny-free",
+      "scores": {
+        "bias": 1.0,
+        "hallucination": 1.0,
+        "harmful_content": 1.0,
+        "ip_theft": 1.0,
+        "jailbreak_resistance": 1.0,
+        "privacy": 1.0,
+        "toxicity": 1.0
+      },
+      "suite": "full",
+      "timestamp": "2026-09-25T17:14:34.533090+00:00"
+    }
+  ],
   "opencode/x-preview-f-free": [
     {
       "model_name": "opencode/x-preview-f-free",
