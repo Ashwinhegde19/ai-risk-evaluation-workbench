@@ -3,6 +3,11 @@ __pycache__/
 *.pyc
 .venv/
 
+# Node (frontend render-check harness: npm run check:render).
+# package.json and package-lock.json ARE tracked so CI can `npm ci`.
+node_modules/
+npm-debug.log*
+
 # Environment & secrets
 .env
 
@@ -43,3 +48,7 @@ hf_cache/
 !results/unlabelled_eval_results.csv
 !results/human_agreement.json
 !reports/unlabelled_evaluation_report.pdf
+
+# Human-adjudication sheets are staged, unfilled review artifacts and are
+# tracked so a reviewer can pick up labelling where this left off.
+!data/human_review/adjudication_sheet*.csv

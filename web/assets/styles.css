@@ -786,6 +786,39 @@ section, footer.methods { padding: 3.6rem 0 1.2rem; }
 }
 .plate--flagged .plate__note { color: #453B2E; }
 
+/* secondary metric ("break rate excluding saturated detectors") — injected
+   into each plate by renderSecondary(), never written into the markup */
+.plate__secondary {
+  margin: .7rem 0 0;
+  padding-top: .55rem;
+  border-top: 1px dashed var(--rule);
+  display: flex; flex-direction: column; gap: .2rem;
+}
+.plate--flagged .plate__secondary { border-top-color: var(--rule-paper-2); }
+.plate__secondary-k { color: var(--tx-dim); }
+.plate--flagged .plate__secondary-k { color: var(--muted-on-paper); }
+.plate__secondary-v { display: flex; align-items: baseline; gap: .5em; flex-wrap: wrap; }
+.plate__secondary-v b {
+  font-family: var(--font-mono);
+  font-size: 1.02rem; font-weight: 700; letter-spacing: -.01em;
+  color: var(--tx);
+}
+.plate--flagged .plate__secondary-v b { color: var(--ink-on-paper); }
+.plate__secondary-n { font-family: var(--font-mono); font-size: .68rem; color: var(--tx-dim); }
+.plate--flagged .plate__secondary-n { color: var(--muted-on-paper); }
+
+/* board-level note explaining the secondary metric (also injected by JS) */
+.board__sat-note {
+  margin: clamp(1.2rem, 2.6vw, 2rem) 0 0;
+  max-width: 78ch;
+  padding-left: .9rem;
+  border-left: 2px solid var(--rule-strong);
+  font-size: .88rem;
+  line-height: 1.65;
+  color: var(--tx-dim);
+}
+.board__sat-note b { color: var(--tx); font-weight: 600; }
+
 /* mini CI bar (shared by plates) */
 .ci { position: relative; height: 14px; background: rgba(33, 28, 23, .08); border: 1px solid var(--rule-paper); }
 .plate--cleared .ci { background: rgba(237, 230, 214, .05); border-color: var(--rule); }
@@ -995,6 +1028,52 @@ section, footer.methods { padding: 3.6rem 0 1.2rem; }
 }
 .bf-row:hover .tag, .bf-row:focus-visible .tag { transform: rotate(-1.2deg) scale(.96); }
 .bf-row__ci { margin-left: auto; font-family: var(--font-mono); font-size: .66rem; color: var(--tx-dim); }
+
+/* ── per-strategy discriminative power badge ──
+   The classification is always spelled out in text, and the border style
+   repeats it a second time (solid / dashed / dotted), so it never rests on
+   colour alone and survives a greyscale print. */
+.bf-power {
+  display: inline-flex; align-items: baseline; gap: .5em;
+  font-family: var(--font-mono);
+  font-size: .6rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: .28em .55em .24em;
+  border: 1.5px solid;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.bf-power__kind { font-weight: 700; }
+.bf-power__fig { color: var(--tx-dim); letter-spacing: .03em; text-transform: none; }
+/* saturated: it fired everywhere, so it is the one badge that must not be missed */
+.bf-power--saturated {
+  color: var(--flag-text); border-color: rgba(200, 64, 42, .8);
+  background: rgba(200, 64, 42, .1); border-width: 2px;
+}
+/* dead: no break on record — dashed, hollow, uncoloured */
+.bf-power--dead {
+  color: var(--muted); border-color: var(--rule-strong);
+  background: transparent; border-style: dashed;
+}
+.bf-power--discriminative {
+  color: var(--cleared); border-color: rgba(124, 154, 141, .7);
+  background: rgba(124, 154, 141, .1);
+}
+.bf-power--narrow {
+  color: var(--gold-text); border-color: rgba(217, 180, 92, .7);
+  background: rgba(232, 194, 74, .1);
+}
+/* partial: the finding-level rows are a truncated sample, power not derivable */
+.bf-power--partial {
+  color: var(--tx-dim); border-color: var(--rule-strong);
+  background: transparent; border-style: dotted;
+}
+[data-theme="light"] .bf-power--saturated      { color: var(--flag-deep); }
+[data-theme="light"] .bf-power--discriminative { color: var(--cleared-deep); }
+[data-theme="light"] .bf-power--narrow         { color: var(--gold-ink); }
+[data-theme="light"] .bf-power--dead,
+[data-theme="light"] .bf-power--partial        { color: var(--tx-dim); }
 .bf-row__tracks { display: grid; grid-template-columns: 64px 1fr 52px; gap: .8rem; align-items: center; }
 .bf-row__tracks + .bf-row__tracks { margin-top: .4rem; }
 .bf-track__lbl {

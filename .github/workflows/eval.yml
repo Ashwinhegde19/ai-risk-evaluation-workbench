@@ -21,6 +21,40 @@ permissions:
   pull-requests: write
 
 jobs:
+  # Frontend render check for the VERDICT console (web/). Independent of the
+  # Python job above: it needs only Node + jsdom and reads the tracked
+  # results/*.json fixtures, so a frontend regression fails on its own check
+  # without touching the eval pipeline's semantics or blocking it.
+  render-check:
+    name: VERDICT console render check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Depth 1 is enough: the harness renders the committed results/*.json
+          # fixtures and never reads git history (unlike the score-history job).
+          fetch-depth: 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          # No `cache: npm` on purpose: the lockfile may not be committed yet,
+          # and setup-node's cache errors out when it is missing, which would
+          # turn a missing lockfile into a red build for the wrong reason.
+
+      - name: Install jsdom
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Render check (headless jsdom)
+        run: npm run check:render
+
   evaluate:
     name: Evaluate model & detect regressions
     runs-on: ubuntu-latest

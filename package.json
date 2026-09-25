@@ -1,0 +1,16 @@
+{
+  "name": "ai-risk-evaluation-workbench",
+  "version": "0.26.0",
+  "private": true,
+  "description": "AI risk evaluation workbench — Node tooling for the VERDICT web console render check. Python dependencies live in pyproject.toml/requirements.txt.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check:render": "node scripts/render_check.js"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}
